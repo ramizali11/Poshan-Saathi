@@ -23,7 +23,7 @@ class MetricTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: backgroundColor ?? Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -62,10 +62,12 @@ class MetricTile extends StatelessWidget {
             Text(
               subtext!,
               style: AppTypography.bodySmall.copyWith(
-                fontSize: 11,
+                fontSize: 10,
                 color: AppColors.statusGreen,
                 fontWeight: FontWeight.w600,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ],

@@ -5,7 +5,6 @@ import 'meal_planner_screen.dart';
 import 'growth_monitoring_screen.dart';
 import 'ai_assistant_screen.dart';
 import 'reminders_screen.dart';
-import '../catalog_drawer.dart';
 
 class ParentMainScaffold extends StatefulWidget {
   final int initialIndex;
@@ -40,8 +39,11 @@ class _ParentMainScaffoldState extends State<ParentMainScaffold> {
     ];
 
     return Scaffold(
-      drawer: const CatalogDrawer(),
-      body: screens[_currentIndex],
+      body: IndexedStack(
+        sizing: StackFit.expand,
+        index: _currentIndex,
+        children: screens,
+      ),
       bottomNavigationBar: AppBottomNav(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),

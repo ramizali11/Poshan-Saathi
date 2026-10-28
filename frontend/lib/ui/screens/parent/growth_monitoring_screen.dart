@@ -62,8 +62,11 @@ class _GrowthMonitoringScreenState extends State<GrowthMonitoringScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 6,
                     children: [
                       StatusBadge(
                         label: 'WHO GREEN ZONE • 50th Percentile',
@@ -126,9 +129,13 @@ class _GrowthMonitoringScreenState extends State<GrowthMonitoringScreen> {
                     children: [
                       const Icon(Icons.verified_user_rounded, size: 16, color: AppColors.primary),
                       const SizedBox(width: 6),
-                      Text(
-                        'Recorded by Kavita Ben (ASHA Worker) on 12 Feb 2026',
-                        style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.primaryDark, fontWeight: FontWeight.w600),
+                      Expanded(
+                        child: Text(
+                          'Recorded by Kavita Ben (ASHA Worker) on 12 Feb 2026',
+                          style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.primaryDark, fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -183,13 +190,14 @@ class _GrowthMonitoringScreenState extends State<GrowthMonitoringScreen> {
                   const SizedBox(height: 12),
 
                   // Legend
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 6,
                     children: [
                       _legendItem(AppColors.statusGreen, 'Median (50th Percentile)'),
-                      const SizedBox(width: 16),
                       _legendItem(AppColors.statusGreenContainer, '±2 SD Normal Band'),
-                      const SizedBox(width: 16),
                       _legendItem(AppColors.primaryDark, "Aarav's Track", isDot: true),
                     ],
                   ),
@@ -364,6 +372,7 @@ class _GrowthMonitoringScreenState extends State<GrowthMonitoringScreen> {
 
   Widget _legendItem(Color color, String text, {bool isDot = false}) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: isDot ? 8 : 14,

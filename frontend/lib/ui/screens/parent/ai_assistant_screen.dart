@@ -62,18 +62,24 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
               child: const Icon(Icons.auto_awesome, color: AppColors.primaryDark, size: 18),
             ),
             const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'PoshanSaathi AI (પોષણ સલાહકાર)',
-                  style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  'Aarav Shah (14m) • Active Context',
-                  style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.textSecondary),
-                ),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'PoshanSaathi AI (પોષણ સલાહકાર)',
+                    style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    'Aarav Shah (14m) • Active Context',
+                    style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.textSecondary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -298,11 +304,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                       children: [
                         const Icon(Icons.science_outlined, size: 16, color: AppColors.tertiaryDark),
                         const SizedBox(width: 6),
-                        Text(
-                          (m['card'] as Map)['title'] as String,
-                          style: AppTypography.labelSmall.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.tertiaryDark,
+                        Expanded(
+                          child: Text(
+                            (m['card'] as Map)['title'] as String,
+                            style: AppTypography.labelSmall.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.tertiaryDark,
+                            ),
                           ),
                         ),
                       ],
@@ -328,12 +336,14 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                 children: [
                   const Icon(Icons.volume_up_rounded, size: 14, color: AppColors.primary),
                   const SizedBox(width: 4),
-                  Text(
-                    'Listen in Gujarati (ગુજરાતીમાં સાંભળો)',
-                    style: AppTypography.labelSmall.copyWith(
-                      color: AppColors.primary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: Text(
+                      'Listen in Gujarati (ગુજરાતીમાં સાંભળો)',
+                      style: AppTypography.labelSmall.copyWith(
+                        color: AppColors.primary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
