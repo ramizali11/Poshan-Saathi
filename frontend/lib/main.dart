@@ -1,0 +1,56 @@
+import 'package:flutter/material.dart';
+import 'core/theme/app_theme.dart';
+import 'ui/screens/auth/welcome_role_screen.dart';
+import 'ui/screens/auth/onboarding_carousel_screen.dart';
+import 'ui/screens/auth/parent_registration_screen.dart';
+import 'ui/screens/auth/otp_verification_screen.dart';
+import 'ui/screens/auth/login_screen.dart';
+import 'ui/screens/auth/forgot_password_screen.dart';
+import 'ui/screens/onboarding/add_child_profile_screen.dart';
+import 'ui/screens/parent/parent_main_scaffold.dart';
+import 'ui/screens/parent/recipe_details_screen.dart';
+import 'ui/screens/parent/nutrition_risk_alerts_screen.dart';
+import 'ui/screens/parent/anganwadi_connect_screen.dart';
+import 'ui/screens/parent/reminders_screen.dart';
+import 'ui/screens/clinician/professional_registration_screen.dart';
+import 'ui/screens/clinician/clinician_dashboard_screen.dart';
+import 'ui/screens/clinician/assigned_children_screen.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const PoshanSaathiApp());
+}
+
+class PoshanSaathiApp extends StatelessWidget {
+  const PoshanSaathiApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'PoshanSaathi (પોષણ સાથી)',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      initialRoute: '/welcome',
+      routes: {
+        '/welcome': (context) => const WelcomeRoleScreen(),
+        '/onboarding': (context) => const OnboardingCarouselScreen(),
+        '/register': (context) => const ParentRegistrationScreen(),
+        '/otp_verify': (context) => const OtpVerificationScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/forgot_password': (context) => const ForgotPasswordScreen(),
+        '/add_child': (context) => const AddChildProfileScreen(),
+        '/dashboard': (context) => const ParentMainScaffold(initialIndex: 0),
+        '/meals': (context) => const ParentMainScaffold(initialIndex: 1),
+        '/growth': (context) => const ParentMainScaffold(initialIndex: 2),
+        '/ai_assistant': (context) => const ParentMainScaffold(initialIndex: 3),
+        '/recipe_details': (context) => const RecipeDetailsScreen(),
+        '/risk_alerts': (context) => const NutritionRiskAlertsScreen(),
+        '/anganwadi_connect': (context) => const AnganwadiConnectScreen(),
+        '/reminders': (context) => const RemindersScreen(),
+        '/clinician_register': (context) => const ProfessionalRegistrationScreen(),
+        '/clinician_dashboard': (context) => const ClinicianDashboardScreen(),
+        '/assigned_children': (context) => const AssignedChildrenScreen(),
+      },
+    );
+  }
+}
