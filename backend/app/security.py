@@ -1,3 +1,4 @@
+import os
 import hashlib
 import secrets
 import hmac
@@ -6,11 +7,31 @@ import base64
 import json
 
 # Secret key for signing lightweight session tokens
-SECRET_KEY = "poshan_saathi_care_secret_key_2026_seva_first"
+SECRET_KEY = os.getenv("SECRET_KEY", "poshan_saathi_care_secret_key_2026_seva_first")
 
 def generate_salt(length: int = 16) -> str:
     """Generates a secure random hexadecimal salt."""
     return secrets.token_hex(length)
+
+def generate_otp_code() -> str:
+    """
+    Generates a cryptographically secure 6-digit numeric OTP.
+    Uses CSPRNG (secrets.randbelow) providing uniform distribution between 000000 and 999999.
+    """
+    return f"{secrets.randbelow(1000000):06d}"
+
+def hash_otp(otp: str, salt: str) -> str:
+    """
+    Hashes an OTP with a salt and the secret key using SHA-256 HMAC.
+    Fast and cryptographically safe for 5-minute transient verification codes.
+    """
+    key = f"{SECRET_KEY}:{salt}".encode("utf-8")
+    return hmac.new(key, otp.encode("utf-8"), hashlib.sha256).hexdigest()
+
+def verify_otp(otp: str, salt: str, stored_hash: str) -> bool:
+    """Verifies a submitted OTP against its stored hash using constant-time comparison."""
+    computed_hash = hash_otp(otp, salt)
+    return hmac.compare_digest(computed_hash, stored_hash)
 
 def hash_password(password: str, salt: str) -> str:
     """

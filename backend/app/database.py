@@ -47,9 +47,16 @@ def init_db():
                 language TEXT DEFAULT 'Gujarati',
                 state TEXT DEFAULT 'Gujarat',
                 district TEXT DEFAULT 'Ahmedabad',
+                is_verified INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL
             );
         """)
+
+        # Migration: Ensure is_verified column exists if database was created earlier
+        cursor.execute("PRAGMA table_info(users);")
+        columns = [row["name"] for row in cursor.fetchall()]
+        if "is_verified" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0;")
         
         # Create an index on phone for fast lookups
         cursor.execute("""
@@ -59,6 +66,27 @@ def init_db():
         # Create an index on email
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+        """)
+
+        # Create email_otps table for storing secure hashed OTPs
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_otps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                email TEXT NOT NULL,
+                otp_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                attempts_count INTEGER DEFAULT 0,
+                max_attempts INTEGER DEFAULT 5,
+                created_at TEXT NOT NULL,
+                last_sent_at TEXT NOT NULL,
+                is_used INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email);
         """)
 
         # Create child_profiles table linked to user

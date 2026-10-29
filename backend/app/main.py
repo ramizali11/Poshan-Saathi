@@ -1,6 +1,18 @@
+import os
+from pathlib import Path
+import dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
+# Load environment variables from app/.env, backend/.env, or root .env
+app_dir = Path(__file__).resolve().parent
+backend_dir = app_dir.parent
+root_dir = backend_dir.parent
+
+dotenv.load_dotenv(app_dir / ".env")
+dotenv.load_dotenv(backend_dir / ".env")
+dotenv.load_dotenv(root_dir / ".env")
 
 from .database import init_db
 from .routers import auth
@@ -43,6 +55,11 @@ def root():
         }
     }
 
-@app.get("/health")
+@app.get("/health", tags=["Health"])
+@app.head("/health", tags=["Health"])
 def health():
-    return {"status": "okay", "database": "sqlite3"}
+    """
+    Lightweight health-check endpoint for external uptime monitors and container orchestrators.
+    Returns status 'ok' without exposing secrets, credentials, or personal information.
+    """
+    return {"status": "ok"}

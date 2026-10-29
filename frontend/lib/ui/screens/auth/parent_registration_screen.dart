@@ -28,6 +28,7 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
   Future<void> _handleRegister() async {
     final name = _nameController.text.trim();
     final phone = _phoneController.text.trim();
+    final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     if (name.isEmpty) {
@@ -44,6 +45,13 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
       return;
     }
 
+    if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid email address for OTP verification.')),
+      );
+      return;
+    }
+
     if (password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a password.')),
@@ -56,7 +64,7 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
     final result = await ApiService.instance.register(
       name: name,
       phone: phone,
-      email: _emailController.text.trim(),
+      email: email,
       password: password,
       language: _selectedLanguage,
       state: _selectedState,
@@ -71,10 +79,10 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
         SnackBar(
           content: Text(result.message),
           backgroundColor: AppColors.statusGreen,
-          duration: const Duration(seconds: 2),
+          duration: const Duration(seconds: 3),
         ),
       );
-      Navigator.pushNamed(context, '/otp_verify');
+      Navigator.pushNamed(context, '/otp_verify', arguments: result.email ?? email);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -185,13 +193,15 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
               ),
               const SizedBox(height: 14),
 
-              _buildFieldLabel('Email Address (ઓપ્શનલ ઇમેઇલ)'),
+              _buildFieldLabel('Email Address for OTP (ઇમેઇલ સરનામું)', isRequired: true),
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.mail_outline_rounded, color: AppColors.textMuted),
-                  hintText: 'email@example.com',
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.mail_outline_rounded, color: AppColors.primary),
+                  hintText: 'name@example.com',
+                  helperText: 'We will send a 6-digit verification code via Resend email',
+                  helperStyle: AppTypography.bodySmall.copyWith(fontSize: 11),
                 ),
               ),
               const SizedBox(height: 14),

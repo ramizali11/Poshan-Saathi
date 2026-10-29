@@ -54,6 +54,21 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
       Navigator.pushReplacementNamed(context, '/dashboard');
+    } else if (result.isUnverified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: AppColors.statusOrange,
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'VERIFY NOW',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.pushNamed(context, '/otp_verify', arguments: result.email ?? identifier);
+            },
+          ),
+        ),
+      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

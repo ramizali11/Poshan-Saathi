@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/services/user_session.dart';
+import '../../../core/services/api_service.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({super.key});
@@ -15,18 +17,138 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       List.generate(6, (index) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
 
+  Timer? _timer;
+  int _secondsRemaining = 60;
+  bool _isVerifying = false;
+  bool _isResending = false;
+  String? _errorMessage;
+
   @override
   void initState() {
     super.initState();
-    // Prepopulate realistic OTP: 4 8 2 9 1 0
-    final digits = ['4', '8', '2', '9', '1', '0'];
-    for (int i = 0; i < 6; i++) {
-      _controllers[i].text = digits[i];
+    _startCooldownTimer();
+  }
+
+  void _startCooldownTimer([int seconds = 60]) {
+    _timer?.cancel();
+    setState(() {
+      _secondsRemaining = seconds;
+    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_secondsRemaining > 0) {
+        setState(() {
+          _secondsRemaining--;
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
+  String _getTargetEmail(BuildContext context) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is String && args.isNotEmpty) {
+      return args.trim();
+    }
+    final sessionEmail = UserSession.instance.currentUser?.email;
+    if (sessionEmail != null && sessionEmail.isNotEmpty) {
+      return sessionEmail.trim();
+    }
+    return 'caregiver@example.com';
+  }
+
+  Future<void> _handleVerify(String email) async {
+    final code = _controllers.map((c) => c.text.trim()).join();
+    if (code.length != 6) {
+      setState(() {
+        _errorMessage = 'Please enter the complete 6-digit verification code.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isVerifying = true;
+      _errorMessage = null;
+    });
+
+    final result = await ApiService.instance.verifyOtp(
+      email: email,
+      otp: code,
+    );
+
+    if (!mounted) return;
+    setState(() => _isVerifying = false);
+
+    if (result.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: AppColors.statusGreen,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      Navigator.pushReplacementNamed(context, '/add_child');
+    } else {
+      setState(() {
+        _errorMessage = result.message;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: AppColors.statusRed,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleResend(String email) async {
+    if (_secondsRemaining > 0 || _isResending) return;
+
+    setState(() {
+      _isResending = true;
+      _errorMessage = null;
+    });
+
+    final result = await ApiService.instance.resendOtp(email: email);
+
+    if (!mounted) return;
+    setState(() => _isResending = false);
+
+    if (result.success) {
+      _startCooldownTimer(result.cooldownSeconds);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: AppColors.statusGreen,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: AppColors.statusRed,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final email = _getTargetEmail(context);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -35,7 +157,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'OTP Verification',
+          'Email Verification',
           style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
         ),
       ),
@@ -48,8 +170,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               // Icon Header
               Center(
                 child: Container(
-                  width: 64,
-                  height: 64,
+                  width: 68,
+                  height: 68,
                   decoration: BoxDecoration(
                     color: AppColors.primaryContainer,
                     shape: BoxShape.circle,
@@ -57,14 +179,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   child: const Icon(
                     Icons.mark_email_read_rounded,
                     color: AppColors.primaryDark,
-                    size: 32,
+                    size: 36,
                   ),
                 ),
               ),
               const SizedBox(height: 16),
 
               Text(
-                'Verify Your Mobile Number\n(ઓટીપી ચકાસણી કરો)',
+                'Verify Your Email Address\n(ઇમેઇલ ઓટીપી ચકાસણી)',
                 textAlign: TextAlign.center,
                 style: AppTypography.headline1.copyWith(fontSize: 22),
               ),
@@ -73,23 +195,43 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               RichText(
                 textAlign: TextAlign.center,
                 text: TextSpan(
-                  text: 'We have sent a 6-digit verification code to\n',
+                  text: 'We have sent a 6-digit secure verification code via Resend to\n',
                   style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
                   children: [
                     TextSpan(
-                      text: '+91 ${UserSession.instance.displayPhone} ',
-                      style: AppTypography.bodyLarge.copyWith(fontWeight: FontWeight.w700),
+                      text: email,
+                      style: AppTypography.bodyLarge.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryDark,
+                      ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 6),
+
+              // 5-minute expiry pill
               Center(
-                child: TextButton.icon(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.edit_outlined, size: 14, color: AppColors.primary),
-                  label: Text(
-                    'Edit mobile number',
-                    style: AppTypography.labelSmall.copyWith(color: AppColors.primary),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryContainer.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.timer_outlined, size: 14, color: AppColors.primaryDark),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Code valid for 5 minutes (300s)',
+                        style: AppTypography.labelSmall.copyWith(
+                          color: AppColors.primaryDark,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -132,94 +274,95 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         } else if (val.isEmpty && index > 0) {
                           _focusNodes[index - 1].requestFocus();
                         }
+                        if (_controllers.every((c) => c.text.isNotEmpty)) {
+                          _handleVerify(email);
+                        }
                       },
                     ),
                   );
                 }),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
+
+              // Inline error message
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.statusRed,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
 
               // Resend Timer Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.timer_outlined, size: 16, color: AppColors.textMuted),
+                  const Icon(Icons.refresh_rounded, size: 16, color: AppColors.textMuted),
                   const SizedBox(width: 4),
-                  Text(
-                    'Resend code in 00:00 seconds  •  ',
-                    style: AppTypography.bodySmall,
-                  ),
-                  GestureDetector(
-                    onTap: () {},
-                    child: Text(
-                      'Resend SMS',
-                      style: AppTypography.labelMedium.copyWith(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w700,
+                  if (_secondsRemaining > 0) ...[
+                    Text(
+                      'Resend code in 00:${_secondsRemaining.toString().padLeft(2, '0')}s',
+                      style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                    ),
+                  ] else ...[
+                    GestureDetector(
+                      onTap: _isResending ? null : () => _handleResend(email),
+                      child: Text(
+                        _isResending ? 'Sending new code...' : 'Resend Code via Email',
+                        style: AppTypography.labelMedium.copyWith(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                          decoration: TextDecoration.underline,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Alternative Delivery Options
-              Text(
-                'Alternative Delivery Options:',
-                style: AppTypography.labelSmall.copyWith(color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
-                      label: const Text('Get on WhatsApp', style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.phone_outlined, size: 16),
-                      label: const Text('Call with OTP', style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
+                  ],
                 ],
               ),
               const SizedBox(height: 24),
 
               // Verify & Continue Button
               ElevatedButton(
-                onPressed: () => Navigator.pushReplacementNamed(context, '/add_child'),
+                onPressed: _isVerifying ? null : () => _handleVerify(email),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text('Verify & Continue (ચકાસો અને આગળ વધો)'),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.arrow_forward_rounded, size: 18),
+                    if (_isVerifying) ...[
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text('Verifying Code...'),
+                    ] else ...[
+                      const Text('Verify & Activate Account (ચકાસો)'),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded, size: 18),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(height: 16),
 
-              // Accessibility Voice
+              // Change Email option
               Center(
                 child: TextButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.record_voice_over_outlined, size: 16, color: AppColors.secondary),
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.edit_outlined, size: 14, color: AppColors.primary),
                   label: Text(
-                    'Having trouble receiving SMS? Click here for voice verification.',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.secondary,
-                      decoration: TextDecoration.underline,
-                    ),
-                    textAlign: TextAlign.center,
+                    'Wrong email address? Go back to edit',
+                    style: AppTypography.labelSmall.copyWith(color: AppColors.primary),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
               // Safety Notice Box
               Container(
@@ -236,7 +379,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Digital Safety Notice: Never share your PoshanSaathi verification OTP with anyone, including healthcare volunteers or Anganwadi workers.',
+                        'Security Notice: An encrypted verification code has been dispatched to your email via Resend. Maximum 5 attempts allowed. Never share your OTP with anyone.',
                         style: AppTypography.bodySmall.copyWith(
                           fontSize: 11,
                           color: AppColors.tertiaryDark,
@@ -253,4 +396,3 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     );
   }
 }
-
