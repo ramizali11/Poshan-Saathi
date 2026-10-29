@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/services/api_service.dart';
 
 class ParentRegistrationScreen extends StatefulWidget {
   const ParentRegistrationScreen({super.key});
@@ -22,6 +23,67 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
   String _selectedState = 'Gujarat (ગુજરાત)';
   String _selectedDistrict = 'Ahmedabad (અમદાવાદ)';
   bool _consentAgreed = true;
+  bool _isLoading = false;
+
+  Future<void> _handleRegister() async {
+    final name = _nameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final password = _passwordController.text;
+
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your full name.')),
+      );
+      return;
+    }
+
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your mobile number.')),
+      );
+      return;
+    }
+
+    if (password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a password.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final result = await ApiService.instance.register(
+      name: name,
+      phone: phone,
+      email: _emailController.text.trim(),
+      password: password,
+      language: _selectedLanguage,
+      state: _selectedState,
+      district: _selectedDistrict,
+    );
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: AppColors.statusGreen,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      Navigator.pushNamed(context, '/otp_verify');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: AppColors.statusRed,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +234,13 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
                 obscureText: _obscureConfirmPassword,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.lock_reset_rounded, color: AppColors.textMuted),
-                  suffixIcon: const Icon(Icons.check_circle_rounded, color: AppColors.statusGreen, size: 20),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                      size: 20,
+                    ),
+                    onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                  ),
                 ),
               ),
               const SizedBox(height: 18),
@@ -277,13 +345,23 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
 
               // Submit Button
               ElevatedButton(
-                onPressed: () => Navigator.pushNamed(context, '/otp_verify'),
+                onPressed: _isLoading ? null : _handleRegister,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text('Create Parent Account & Send OTP'),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.arrow_forward_rounded, size: 18),
+                    if (_isLoading) ...[
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text('Saving to Database...'),
+                    ] else ...[
+                      const Text('Create Parent Account & Send OTP'),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded, size: 18),
+                    ],
                   ],
                 ),
               ),

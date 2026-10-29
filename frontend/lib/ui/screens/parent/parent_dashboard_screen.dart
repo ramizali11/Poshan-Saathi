@@ -4,6 +4,8 @@ import 'package:frontend/core/theme/app_colors.dart';
 import 'package:frontend/core/theme/app_typography.dart';
 import 'package:frontend/core/widgets/status_badge.dart';
 import 'package:frontend/core/widgets/metric_tile.dart';
+import 'package:frontend/core/models/user_model.dart';
+import 'package:frontend/core/services/user_session.dart';
 import 'package:frontend/core/data/mock_data.dart';   
 
 class ParentDashboardScreen extends StatefulWidget {
@@ -24,6 +26,209 @@ class ParentDashboardScreen extends StatefulWidget {
 
 class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
   final ChildProfile _child = MockData.defaultChild;
+
+  void _showUserProfileModal(BuildContext context, UserModel? user) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final initials = (user?.name.trim().isNotEmpty == true)
+            ? user!.name.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
+            : 'PS';
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: AppColors.primary,
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user?.name ?? 'Caregiver',
+                          style: AppTypography.headline3.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                (user?.role ?? 'Parent').toUpperCase(),
+                                style: AppTypography.labelSmall.copyWith(
+                                  color: AppColors.primaryDark,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.verified_rounded, color: AppColors.statusGreen, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              'SQLite DB Active',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.statusGreen,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              const Divider(height: 1),
+              const SizedBox(height: 16),
+              _buildProfileDetailRow(
+                icon: Icons.phone_android_rounded,
+                label: 'Mobile Number (મોબાઇલ)',
+                value: '+91 ${user?.phone.isNotEmpty == true ? user!.phone : "9876543210"}',
+              ),
+              const SizedBox(height: 12),
+              _buildProfileDetailRow(
+                icon: Icons.mail_outline_rounded,
+                label: 'Email (ઇમેઇલ)',
+                value: user?.email?.isNotEmpty == true ? user!.email! : 'Not provided',
+              ),
+              const SizedBox(height: 12),
+              _buildProfileDetailRow(
+                icon: Icons.language_rounded,
+                label: 'Language (ભાષા)',
+                value: user?.language ?? 'ગુજરાતી (Gujarati)',
+              ),
+              const SizedBox(height: 12),
+              _buildProfileDetailRow(
+                icon: Icons.location_on_outlined,
+                label: 'District & State (જિલ્લો અને રાજ્ય)',
+                value: '${user?.district ?? "Ahmedabad (અમદાવાદ)"}, ${user?.state ?? "Gujarat (ગુજરાત)"}',
+              ),
+              const SizedBox(height: 12),
+              _buildProfileDetailRow(
+                icon: Icons.storage_rounded,
+                label: 'Database Record ID',
+                value: '#${user?.id ?? 1} (Saved in poshan_saathi.db)',
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.pushNamed(context, '/register');
+                      },
+                      icon: const Icon(Icons.person_add_outlined, size: 16),
+                      label: const Text('Add Account', style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.statusRed,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.pushReplacementNamed(context, '/login');
+                      },
+                      icon: const Icon(Icons.logout_rounded, size: 16),
+                      label: const Text('Log Out', style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProfileDetailRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 18, color: AppColors.primary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: AppTypography.labelSmall.copyWith(
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                ),
+              ),
+              Text(
+                value,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   void initState() {
@@ -68,31 +273,34 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
         ),
         actions: [
           // Child Switcher Pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.primaryContainer.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.primary.withOpacity(0.2)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(
-                  radius: 10,
-                  backgroundColor: AppColors.primary,
-                  child: const Text('AS', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Aarav (14m)',
-                  style: AppTypography.labelSmall.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryDark,
+          GestureDetector(
+            onTap: () => _showUserProfileModal(context, UserSession.instance.currentUser),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.primaryContainer.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircleAvatar(
+                    radius: 10,
+                    backgroundColor: AppColors.primary,
+                    child: Text('AS', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
                   ),
-                ),
-                const Icon(Icons.arrow_drop_down_rounded, size: 18, color: AppColors.primaryDark),
-              ],
+                  const SizedBox(width: 6),
+                  Text(
+                    'Aarav (14m)',
+                    style: AppTypography.labelSmall.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down_rounded, size: 18, color: AppColors.primaryDark),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -129,37 +337,76 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
             // Greeting Card
             SafeLayoutBox(
               name: 'GreetingCard',
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.divider),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Good morning, Priya! ☀️',
-                            style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            'સુપ્રભાત • Happy feeding day',
-                            style: AppTypography.gujaratiSubtitle.copyWith(color: AppColors.secondary),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "Let's take a gentle, healthy step toward Aarav's growth milestone today.",
-                            style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
-                          ),
-                        ],
-                      ),
+              child: ValueListenableBuilder<UserModel?>(
+                valueListenable: UserSession.instance.currentUserNotifier,
+                builder: (context, currentUser, _) {
+                  final caregiverName = (currentUser?.name.isNotEmpty == true)
+                      ? currentUser!.name
+                      : 'Caregiver';
+                  final initials = caregiverName.trim().isNotEmpty
+                      ? caregiverName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
+                      : 'PS';
+
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.divider),
                     ),
-                  ],
-                ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Good morning, $caregiverName! ☀️',
+                                style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                              Text(
+                                'સુપ્રભાત • Happy feeding day',
+                                style: AppTypography.gujaratiSubtitle.copyWith(color: AppColors.secondary),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Let's take a gentle, healthy step toward Aarav's growth milestone today.",
+                                style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Interactive Caregiver Profile Avatar
+                        GestureDetector(
+                          onTap: () => _showUserProfileModal(context, currentUser),
+                          child: Tooltip(
+                            message: 'View Caregiver Profile',
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppColors.primary, width: 2),
+                              ),
+                              child: CircleAvatar(
+                                radius: 20,
+                                backgroundColor: AppColors.primaryContainer,
+                                child: Text(
+                                  initials,
+                                  style: const TextStyle(
+                                    color: AppColors.primaryDark,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 14),

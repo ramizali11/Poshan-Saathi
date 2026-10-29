@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/services/user_session.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({super.key});
@@ -76,7 +77,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
                   children: [
                     TextSpan(
-                      text: '+91 98765 43210 ',
+                      text: '+91 ${UserSession.instance.displayPhone} ',
                       style: AppTypography.bodyLarge.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ],
