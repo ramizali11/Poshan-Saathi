@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from typing import Optional
 
 class UserRegisterRequest(BaseModel):
@@ -21,6 +21,17 @@ class VerifyOtpRequest(BaseModel):
 
 class ResendOtpRequest(BaseModel):
     email: str = Field(..., description="Registered email address requesting a new OTP")
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=3, description="Registered email address")
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=10, description="Single-use password reset token")
+    new_password: str = Field(..., min_length=6, description="New password (minimum 6 characters)")
+
+class GenericMessageResponse(BaseModel):
+    success: bool
+    message: str
 
 class UserResponse(BaseModel):
     id: int

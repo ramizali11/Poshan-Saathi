@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 
@@ -10,10 +11,43 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final _phoneController = TextEditingController(text: '9876543210');
-  final _newPassController = TextEditingController(text: 'PriyaCare@2027');
-  final _confirmPassController = TextEditingController(text: 'PriyaCare@2027');
+  final _emailController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
 
+  bool _isLoading = false;
+  bool _submitted = false;
+  String? _statusMessage;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final email = _emailController.text.trim();
+    final result = await ApiService.instance.forgotPassword(email: email);
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      if (result.success) {
+        _submitted = true;
+        _statusMessage = result.message;
+      } else {
+        _errorMessage = result.message;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,247 +59,274 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Account Recovery',
+          'Forgot Password',
           style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Security Header
-              Row(
-                children: [
-                  const Icon(Icons.security_rounded, color: AppColors.primary, size: 24),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Account Protection & Recovery\n(સુરક્ષિત ખાતું પુનઃપ્રાપ્તિ)',
-                      style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-                    ),
+              // Header Icon and Title
+              Center(
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryContainer,
+                    shape: BoxShape.circle,
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Step 1: Send Code
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.divider),
+                  child: const Icon(
+                    Icons.lock_reset_rounded,
+                    color: AppColors.primary,
+                    size: 38,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryContainer,
-                        borderRadius: BorderRadius.circular(6),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Reset Your Password',
+                textAlign: TextAlign.center,
+                style: AppTypography.headline2.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'પાસવર્ડ પુનઃપ્રાપ્તિ',
+                textAlign: TextAlign.center,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Enter the email associated with your PoshanSaathi account. We will send a secure password reset link to your inbox.',
+                textAlign: TextAlign.center,
+                style: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 28),
+
+              if (_submitted) ...[
+                // Neutral Confirmation State Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.statusGreen.withOpacity(0.4)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
-                      child: Text(
-                        'STEP 1 • પગલું ૧',
-                        style: AppTypography.labelSmall.copyWith(
-                          color: AppColors.primaryDark,
-                          fontWeight: FontWeight.w700,
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: const BoxDecoration(
+                          color: AppColors.statusGreenContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.mark_email_read_rounded,
+                          color: AppColors.statusGreen,
+                          size: 32,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Verify Identity',
-                      style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      'Enter your registered mobile or email to receive reset link.',
-                      style: AppTypography.bodySmall,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _phoneController,
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.contact_mail_outlined, color: AppColors.primary),
-                        hintText: 'Enter mobile number',
+                      const SizedBox(height: 16),
+                      Text(
+                        'Check Your Email',
+                        style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
-                        borderRadius: BorderRadius.circular(10),
+                      const SizedBox(height: 10),
+                      Text(
+                        _statusMessage ??
+                            'If an account exists for this email, you will receive a password reset link.',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.verified_rounded, size: 16, color: AppColors.statusGreen),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Verified maternal profile linked: Aarav (14m)',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.primaryDark,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 11,
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.divider),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline_rounded,
+                                size: 18, color: AppColors.textMuted),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'The link is valid for 15 minutes. Check spam or junk folders if you don\'t see it.',
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: AppColors.textMuted,
+                                  fontSize: 12,
+                                ),
                               ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pushReplacementNamed(context, '/login'),
+                          child: const Text('Back to Login'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _submitted = false;
+                            _statusMessage = null;
+                            _errorMessage = null;
+                          });
+                        },
+                        child: Text(
+                          'Try a different email',
+                          style: AppTypography.labelSmall.copyWith(color: AppColors.primary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                // Input Form
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.divider),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Registered Email Address',
+                          style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          autocorrect: false,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.email_outlined, color: AppColors.primary),
+                            hintText: 'e.g. parent@example.com',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Please enter your registered email';
+                            }
+                            final email = value.trim();
+                            final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                            if (!emailRegex.hasMatch(email)) {
+                              return 'Please enter a valid email address';
+                            }
+                            return null;
+                          },
+                        ),
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.statusRedContainer,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.statusRed.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline_rounded,
+                                    size: 18, color: AppColors.statusRed),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.statusRed,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Code sent via SMS • Resend in 00:48s',
-                          style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textMuted),
-                        ),
-                        TextButton(
-                          onPressed: () {},
-                          child: Text('Change Number', style: AppTypography.labelSmall.copyWith(color: AppColors.primary)),
+                        const SizedBox(height: 22),
+                        ElevatedButton(
+                          onPressed: _isLoading ? null : _handleSubmit,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_isLoading) ...[
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                const Text('Sending Link...'),
+                              ] else ...[
+                                const Icon(Icons.send_rounded, size: 18),
+                                const SizedBox(width: 8),
+                                const Text('Send Reset Link'),
+                              ],
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 18),
-
-              // Step 2: Set New Password
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.divider),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.secondaryContainer,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        'STEP 2 • પગલું ૨',
-                        style: AppTypography.labelSmall.copyWith(
-                          color: AppColors.secondaryDark,
-                          fontWeight: FontWeight.w700,
-                        ),
+                const SizedBox(height: 20),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                    label: Text(
+                      'Remember your password? Log In',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Set New Password (નવો પાસવર્ડ)',
-                      style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _newPassController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.key_rounded, color: AppColors.primary),
-                        hintText: 'Enter new password',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _confirmPassController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.lock_reset_rounded, color: AppColors.primary),
-                        hintText: 'Confirm new password',
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Live Checklist
-                    _buildCheckItem('At least 8 characters (ઓછામાં ઓછા ૮ અક્ષરો)', true),
-                    _buildCheckItem('Contains at least one number (ઓછામાં ઓછો ૧ અંક)', true),
-                    _buildCheckItem('Contains a special symbol (!@#\$) (ખાસ ચિહ્ન)', true),
-                    _buildCheckItem('Passwords match successfully (પાસવર્ડ મેળ ખાય છે)', true),
-                    const SizedBox(height: 16),
-
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Password updated successfully! Logging you in...'),
-                            backgroundColor: AppColors.statusGreen,
-                          ),
-                        );
-                        Navigator.pushReplacementNamed(context, '/login');
-                      },
-                      icon: const Icon(Icons.task_alt_rounded, size: 18),
-                      label: const Text('Update Password & Return to Login'),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-
-              // Guarantee Card
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.statusGreenContainer,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.statusGreen.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.health_and_safety_rounded, color: AppColors.statusGreen, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Data Preservation Guarantee: Your child\'s meal plans and recorded growth data remain safely preserved.',
-                        style: AppTypography.bodySmall.copyWith(
-                          fontSize: 11,
-                          color: AppColors.statusGreen,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ],
           ),
         ),
       ),
     );
   }
-
-  Widget _buildCheckItem(String label, bool isMet) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          Icon(
-            isMet ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-            size: 16,
-            color: isMet ? AppColors.statusGreen : AppColors.textMuted,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: AppTypography.bodySmall.copyWith(
-                fontSize: 11,
-                color: isMet ? AppColors.textPrimary : AppColors.textMuted,
-                fontWeight: isMet ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
-

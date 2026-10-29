@@ -1,4 +1,6 @@
+import os
 from fastapi import APIRouter, HTTPException, Header, Query, status
+from fastapi.responses import HTMLResponse
 from datetime import datetime, timezone, timedelta
 import re
 from typing import Optional, List
@@ -13,13 +15,18 @@ from ..security import (
     generate_otp_code,
     hash_otp,
     verify_otp,
+    generate_reset_token,
+    hash_reset_token,
 )
-from ..email_service import send_otp_email
+from ..email_service import send_otp_email, send_password_reset_email
 from ..schemas import (
     UserRegisterRequest,
     UserLoginRequest,
     VerifyOtpRequest,
     ResendOtpRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    GenericMessageResponse,
     UserResponse,
     AuthResponse,
 )
@@ -434,6 +441,454 @@ def login(req: UserLoginRequest):
             requires_verification=False,
             email=row["email"]
         )
+
+@router.post("/forgot-password", response_model=GenericMessageResponse)
+def forgot_password(req: ForgotPasswordRequest):
+    """
+    Initiates a password reset request.
+    Always returns a neutral confirmation message to prevent account enumeration.
+    If the account exists, generates a single-use token expiring in 15 minutes,
+    stores its cryptographic hash, and sends an email via Resend.
+    """
+    generic_msg = "If an account exists for this email, you will receive a password reset link."
+    norm_email = req.email.strip().lower()
+    if not norm_email or "@" not in norm_email or "." not in norm_email:
+        return GenericMessageResponse(success=True, message=generic_msg)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT id, name FROM users WHERE email = ?", (norm_email,))
+        user_row = cursor.fetchone()
+
+        if not user_row:
+            return GenericMessageResponse(success=True, message=generic_msg)
+
+        now = datetime.now(timezone.utc)
+
+        # Rate limit check: enforce 60-second cooldown between reset requests for this email
+        cursor.execute("""
+            SELECT created_at FROM password_resets
+            WHERE email = ?
+            ORDER BY id DESC LIMIT 1
+        """, (norm_email,))
+        last_reset = cursor.fetchone()
+        if last_reset:
+            last_dt = parse_iso_utc(last_reset["created_at"])
+            if (now - last_dt).total_seconds() < 60:
+                # Return generic message without dispatching duplicate email to prevent spamming
+                return GenericMessageResponse(success=True, message=generic_msg)
+
+        # Invalidate any prior unused reset tokens for this email
+        cursor.execute("UPDATE password_resets SET is_used = 1 WHERE email = ? AND is_used = 0", (norm_email,))
+
+        # Generate unpredictable 256-bit URL-safe reset token
+        token = generate_reset_token()
+        token_hash = hash_reset_token(token)
+        salt = generate_salt()
+        expires_at = (now + timedelta(minutes=15)).isoformat()
+        created_at = now.isoformat()
+
+        # Store only the token hash, user ID, expiry, and unused status
+        cursor.execute("""
+            INSERT INTO password_resets (user_id, email, token_hash, salt, expires_at, created_at, is_used)
+            VALUES (?, ?, ?, ?, ?, ?, 0)
+        """, (user_row["id"], norm_email, token_hash, salt, expires_at, created_at))
+
+        # Construct the reset URL using environment variable
+        base_url = os.getenv("PASSWORD_RESET_URL", "https://poshan-saathi-1.onrender.com/api/auth/reset-password").strip().rstrip("/")
+        reset_url = f"{base_url}?token={token}"
+
+        # Dispatch email via Resend (never logging the token)
+        send_password_reset_email(norm_email, user_row["name"], reset_url)
+
+        return GenericMessageResponse(success=True, message=generic_msg)
+
+@router.post("/reset-password", response_model=GenericMessageResponse)
+def reset_password(req: ResetPasswordRequest):
+    """
+    Validates single-use reset token hash, checks 15-minute expiry, validates new password,
+    hashes password using PBKDF2-HMAC-SHA256, updates user credentials, and invalidates the token.
+    """
+    new_pwd = req.new_password.strip()
+    if len(new_pwd) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters long."
+        )
+
+    clean_token = req.token.strip()
+    token_hash = hash_reset_token(clean_token)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT id, user_id, email, expires_at, is_used
+            FROM password_resets
+            WHERE token_hash = ?
+            ORDER BY id DESC LIMIT 1
+        """, (token_hash,))
+        reset_record = cursor.fetchone()
+
+        if not reset_record:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired password reset link. Please request a new one."
+            )
+
+        if reset_record["is_used"] == 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This password reset link has already been used. Please request a new link."
+            )
+
+        # Check 15-minute expiry
+        expires_dt = parse_iso_utc(reset_record["expires_at"])
+        if datetime.now(timezone.utc) > expires_dt:
+            cursor.execute("UPDATE password_resets SET is_used = 1 WHERE id = ?", (reset_record["id"],))
+            conn.commit()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This password reset link has expired (15-minute limit). Please request a fresh reset link."
+            )
+
+        # Concurrency-safe atomic invalidation
+        cursor.execute("""
+            UPDATE password_resets
+            SET is_used = 1
+            WHERE id = ? AND is_used = 0
+        """, (reset_record["id"],))
+        if cursor.rowcount == 0:
+            conn.commit()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This password reset link was already used in another request."
+            )
+
+        # Securely hash new password with fresh salt
+        new_salt = generate_salt()
+        pwd_hash = hash_password(new_pwd, new_salt)
+
+        # Update user in database & mark email verified
+        cursor.execute("""
+            UPDATE users
+            SET password_hash = ?, salt = ?, is_verified = 1
+            WHERE id = ?
+        """, (pwd_hash, new_salt, reset_record["user_id"]))
+
+        conn.commit()
+
+        return GenericMessageResponse(
+            success=True,
+            message="Your password has been successfully reset! You can now log in with your new password."
+        )
+
+@router.get("/reset-password", response_class=HTMLResponse)
+def reset_password_web_page(token: Optional[str] = Query(None)):
+    """
+    Serves an interactive web reset page that allows users to reset their password
+    directly in any browser or open the mobile app via deep-link.
+    """
+    token_val = token.strip() if token else ""
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Reset Password - PoshanSaathi</title>
+      <style>
+        * {{ box-sizing: border-box; }}
+        body {{
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          background-color: #EEF2E9;
+          margin: 0;
+          padding: 24px 16px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          color: #181D17;
+        }}
+        .card {{
+          background: #ffffff;
+          border-radius: 20px;
+          padding: 32px 24px;
+          max-width: 440px;
+          width: 100%;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+          border: 1px solid #C3C8BF;
+        }}
+        .logo {{
+          text-align: center;
+          margin-bottom: 20px;
+        }}
+        .logo h1 {{
+          margin: 0;
+          font-size: 22px;
+          color: #344C38;
+          font-weight: 800;
+        }}
+        .logo p {{
+          margin: 4px 0 0;
+          font-size: 12px;
+          color: #6B4F3A;
+          font-weight: 600;
+        }}
+        h2 {{
+          font-size: 18px;
+          margin: 0 0 8px;
+          color: #181D17;
+        }}
+        p.subtitle {{
+          font-size: 13px;
+          color: #434842;
+          margin: 0 0 20px;
+          line-height: 1.4;
+        }}
+        .form-group {{
+          margin-bottom: 16px;
+        }}
+        label {{
+          display: block;
+          font-size: 12px;
+          font-weight: 700;
+          margin-bottom: 6px;
+          color: #181D17;
+        }}
+        .input-wrap {{
+          position: relative;
+        }}
+        input[type="password"], input[type="text"] {{
+          width: 100%;
+          padding: 12px 40px 12px 14px;
+          border: 1px solid #C3C8BF;
+          border-radius: 10px;
+          font-size: 14px;
+          outline: none;
+          transition: border-color 0.2s;
+        }}
+        input:focus {{
+          border-color: #526B55;
+          box-shadow: 0 0 0 2px rgba(82, 107, 85, 0.2);
+        }}
+        .toggle-btn {{
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 13px;
+          color: #737871;
+          padding: 0;
+        }}
+        .checklist {{
+          background: #f7fafc;
+          border-radius: 8px;
+          padding: 10px 12px;
+          margin-bottom: 18px;
+          font-size: 11px;
+          color: #737871;
+        }}
+        .check-item {{
+          display: flex;
+          align-items: center;
+          margin-bottom: 4px;
+        }}
+        .check-item:last-child {{ margin-bottom: 0; }}
+        .check-item.valid {{ color: #2E7D32; font-weight: 600; }}
+        .btn-submit {{
+          width: 100%;
+          background: #526B55;
+          color: #ffffff;
+          border: none;
+          border-radius: 10px;
+          padding: 14px;
+          font-size: 15px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: background 0.2s;
+        }}
+        .btn-submit:hover {{
+          background: #344C38;
+        }}
+        .btn-submit:disabled {{
+          background: #A8ADA4;
+          cursor: not-allowed;
+        }}
+        .alert {{
+          padding: 12px;
+          border-radius: 8px;
+          font-size: 13px;
+          margin-bottom: 16px;
+          display: none;
+        }}
+        .alert-error {{
+          background: #FFEBEE;
+          color: #D32F2F;
+          border: 1px solid #FFCDD2;
+        }}
+        .alert-success {{
+          background: #E8F5E9;
+          color: #2E7D32;
+          border: 1px solid #C8E6C9;
+        }}
+        .app-link-btn {{
+          display: inline-block;
+          margin-top: 14px;
+          padding: 10px 16px;
+          background: #CEEACE;
+          color: #344C38;
+          text-decoration: none;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 700;
+          text-align: center;
+          width: 100%;
+        }}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="logo">
+          <h1>🌱 PoshanSaathi</h1>
+          <p>પોષણ સાથી • Child Nutrition Care</p>
+        </div>
+
+        <div id="alertBox" class="alert"></div>
+
+        <div id="formSection">
+          <h2>Create New Password</h2>
+          <p class="subtitle">Enter your new secure password below to regain access to your caregiver account.</p>
+
+          <form id="resetForm">
+            <input type="hidden" id="token" value="{token_val}">
+
+            <div class="form-group">
+              <label for="newPassword">New Password</label>
+              <div class="input-wrap">
+                <input type="password" id="newPassword" placeholder="Minimum 6 characters" required autocomplete="new-password">
+                <button type="button" class="toggle-btn" onclick="togglePass('newPassword')">Show</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="confirmPassword">Confirm New Password</label>
+              <div class="input-wrap">
+                <input type="password" id="confirmPassword" placeholder="Re-enter new password" required autocomplete="new-password">
+                <button type="button" class="toggle-btn" onclick="togglePass('confirmPassword')">Show</button>
+              </div>
+            </div>
+
+            <div class="checklist">
+              <div id="cLen" class="check-item">● At least 6 characters</div>
+              <div id="cMatch" class="check-item">● Passwords must match</div>
+            </div>
+
+            <button type="submit" id="submitBtn" class="btn-submit">Reset Password</button>
+          </form>
+
+          {f'<a href="poshansaathi://reset-password?token={token_val}" class="app-link-btn">📱 Open in PoshanSaathi App</a>' if token_val else ''}
+        </div>
+
+        <div id="successSection" style="display: none; text-align: center;">
+          <h2 style="color: #2E7D32;">🎉 Password Reset Complete!</h2>
+          <p class="subtitle">Your password has been successfully updated in the secure SQLite database. You can now log in using your new credentials.</p>
+          <a href="poshansaathi://reset-password?completed=true" class="app-link-btn" style="background: #526B55; color: #fff;">Open App & Log In</a>
+        </div>
+      </div>
+
+      <script>
+        const tokenInput = document.getElementById('token');
+        const newPass = document.getElementById('newPassword');
+        const confirmPass = document.getElementById('confirmPassword');
+        const cLen = document.getElementById('cLen');
+        const cMatch = document.getElementById('cMatch');
+        const submitBtn = document.getElementById('submitBtn');
+        const alertBox = document.getElementById('alertBox');
+        const formSection = document.getElementById('formSection');
+        const successSection = document.getElementById('successSection');
+
+        function togglePass(id) {{
+          const input = document.getElementById(id);
+          input.type = input.type === 'password' ? 'text' : 'password';
+        }}
+
+        function validate() {{
+          const p1 = newPass.value;
+          const p2 = confirmPass.value;
+
+          const isLenValid = p1.length >= 6;
+          const isMatchValid = p1.length > 0 && p1 === p2;
+
+          cLen.className = isLenValid ? 'check-item valid' : 'check-item';
+          cLen.textContent = (isLenValid ? '✓' : '●') + ' At least 6 characters';
+
+          cMatch.className = isMatchValid ? 'check-item valid' : 'check-item';
+          cMatch.textContent = (isMatchValid ? '✓' : '●') + ' Passwords match';
+
+          return isLenValid && isMatchValid;
+        }}
+
+        newPass.addEventListener('input', validate);
+        confirmPass.addEventListener('input', validate);
+
+        document.getElementById('resetForm').addEventListener('submit', async (e) => {{
+          e.preventDefault();
+          alertBox.style.display = 'none';
+
+          const token = tokenInput.value.trim();
+          if (!token) {{
+            alertBox.className = 'alert alert-error';
+            alertBox.textContent = 'Reset token is missing. Please open the reset link from your email.';
+            alertBox.style.display = 'block';
+            return;
+          }}
+
+          if (!validate()) {{
+            alertBox.className = 'alert alert-error';
+            alertBox.textContent = 'Please make sure passwords match and meet the 6-character requirement.';
+            alertBox.style.display = 'block';
+            return;
+          }}
+
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Updating Password...';
+
+          try {{
+            const response = await fetch('/api/auth/reset-password', {{
+              method: 'POST',
+              headers: {{ 'Content-Type': 'application/json' }},
+              body: JSON.stringify({{ token: token, new_password: newPass.value }})
+            }});
+
+            const data = await response.json();
+
+            if (response.ok) {{
+              formSection.style.display = 'none';
+              successSection.style.display = 'block';
+            }} else {{
+              alertBox.className = 'alert alert-error';
+              alertBox.textContent = data.detail || 'Failed to reset password. The link may be expired.';
+              alertBox.style.display = 'block';
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Reset Password';
+            }}
+          }} catch (err) {{
+            alertBox.className = 'alert alert-error';
+            alertBox.textContent = 'Network error. Please check your connection and try again.';
+            alertBox.style.display = 'block';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Reset Password';
+          }}
+        }});
+      </script>
+    </body>
+    </html>
+    """
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user(

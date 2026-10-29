@@ -33,6 +33,21 @@ def verify_otp(otp: str, salt: str, stored_hash: str) -> bool:
     computed_hash = hash_otp(otp, salt)
     return hmac.compare_digest(computed_hash, stored_hash)
 
+def generate_reset_token() -> str:
+    """
+    Generates an unpredictable, cryptographically secure 256-bit URL-safe reset token.
+    Uses CSPRNG (secrets.token_urlsafe) yielding 43 high-entropy characters.
+    """
+    return secrets.token_urlsafe(32)
+
+def hash_reset_token(token: str) -> str:
+    """
+    Hashes a password reset token using HMAC-SHA256 with the server SECRET_KEY.
+    Produces a one-way deterministic hash suitable for indexed database lookups
+    without ever storing raw tokens in persistent storage.
+    """
+    return hmac.new(SECRET_KEY.encode("utf-8"), token.encode("utf-8"), hashlib.sha256).hexdigest()
+
 def hash_password(password: str, salt: str) -> str:
     """
     Hashes a password with a salt using PBKDF2-HMAC-SHA256 (100,000 iterations).

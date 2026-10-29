@@ -6,6 +6,7 @@ import 'ui/screens/auth/parent_registration_screen.dart';
 import 'ui/screens/auth/otp_verification_screen.dart';
 import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/auth/forgot_password_screen.dart';
+import 'ui/screens/auth/reset_password_screen.dart';
 import 'ui/screens/onboarding/add_child_profile_screen.dart';
 import 'ui/screens/parent/parent_main_scaffold.dart';
 import 'ui/screens/parent/recipe_details_screen.dart';
@@ -38,6 +39,8 @@ class PoshanSaathiApp extends StatelessWidget {
         '/otp_verify': (context) => const OtpVerificationScreen(),
         '/login': (context) => const LoginScreen(),
         '/forgot_password': (context) => const ForgotPasswordScreen(),
+        '/reset_password': (context) => const ResetPasswordScreen(),
+        '/reset-password': (context) => const ResetPasswordScreen(),
         '/add_child': (context) => const AddChildProfileScreen(),
         '/dashboard': (context) => const ParentMainScaffold(initialIndex: 0),
         '/meals': (context) => const ParentMainScaffold(initialIndex: 1),
@@ -50,6 +53,18 @@ class PoshanSaathiApp extends StatelessWidget {
         '/clinician_register': (context) => const ProfessionalRegistrationScreen(),
         '/clinician_dashboard': (context) => const ClinicianDashboardScreen(),
         '/assigned_children': (context) => const AssignedChildrenScreen(),
+      },
+      onGenerateRoute: (settings) {
+        final uri = Uri.tryParse(settings.name ?? '');
+        if (uri != null && (uri.path == '/reset_password' || uri.path == '/reset-password')) {
+          final token = uri.queryParameters['token'] ??
+              (settings.arguments is String ? settings.arguments as String : null);
+          return MaterialPageRoute(
+            builder: (context) => ResetPasswordScreen(initialToken: token),
+            settings: settings,
+          );
+        }
+        return null;
       },
     );
   }

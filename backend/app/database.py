@@ -89,6 +89,27 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email);
         """)
 
+        # Create password_resets table for storing secure single-use password reset token hashes
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS password_resets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                email TEXT NOT NULL,
+                token_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                is_used INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_password_resets_token_hash ON password_resets(token_hash);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_password_resets_email ON password_resets(email);
+        """)
+
         # Create child_profiles table linked to user
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS child_profiles (
