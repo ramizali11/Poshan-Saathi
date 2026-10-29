@@ -242,12 +242,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           ),
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
-                              return 'Please enter your registered email';
+                              return 'Please enter your registered email address.';
                             }
                             final email = value.trim();
-                            final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                            if (!email.contains('@')) {
+                              return 'Missing "@" symbol in email address.';
+                            }
+                            if (!email.contains('.')) {
+                              return 'Missing domain extension (e.g. .com) in email address.';
+                            }
+                            final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
                             if (!emailRegex.hasMatch(email)) {
-                              return 'Please enter a valid email address';
+                              return 'Please enter a properly formatted email (e.g. parent@example.com).';
                             }
                             return null;
                           },

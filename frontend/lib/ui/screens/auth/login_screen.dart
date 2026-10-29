@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/widgets/social_auth_buttons.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -243,7 +244,31 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
+
+              // Social Sign-In: Google & Apple
+              SocialAuthButtons(
+                isRegistration: false,
+                onAuthSuccess: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Logged in successfully!'),
+                      backgroundColor: AppColors.statusGreen,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
+                },
+                onAuthError: (error) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(error),
+                      backgroundColor: AppColors.statusRed,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 18),
 
               // Divider
               Row(

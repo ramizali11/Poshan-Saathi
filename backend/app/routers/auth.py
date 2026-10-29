@@ -1,4 +1,5 @@
 import os
+import logging
 from fastapi import APIRouter, HTTPException, Header, Query, status
 from fastapi.responses import HTMLResponse
 from datetime import datetime, timezone, timedelta
@@ -18,7 +19,8 @@ from ..security import (
     generate_reset_token,
     hash_reset_token,
 )
-from ..email_service import send_otp_email, send_password_reset_email
+from ..email_service import send_otp_email, send_password_reset_email, mask_email
+from ..oauth_service import verify_google_id_token, verify_apple_identity_token
 from ..schemas import (
     UserRegisterRequest,
     UserLoginRequest,
@@ -26,11 +28,14 @@ from ..schemas import (
     ResendOtpRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
+    GoogleAuthRequest,
+    AppleAuthRequest,
     GenericMessageResponse,
     UserResponse,
     AuthResponse,
 )
 
+logger = logging.getLogger("poshan_saathi.auth")
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 def clean_phone(phone: str) -> str:
@@ -129,7 +134,7 @@ def register(req: UserRegisterRequest):
         """, (user_id, norm_email, otp_hash, otp_salt, expires_at, created_at, last_sent_at))
 
         # Send email via Resend API
-        email_sent, email_err = send_otp_email(norm_email, req.name.strip(), otp)
+        email_sent, email_err, email_msg_id = send_otp_email(norm_email, req.name.strip(), otp)
 
         user_data = UserResponse(
             id=user_id,
@@ -362,7 +367,7 @@ def resend_otp(req: ResendOtpRequest):
         """, (user_row["id"], norm_email, otp_hash, otp_salt, expires_at, last_sent_at, last_sent_at))
 
         # Send via Resend API
-        sent, err = send_otp_email(norm_email, user_row["name"], new_otp)
+        sent, err, msg_id = send_otp_email(norm_email, user_row["name"], new_otp)
 
         msg = f"A fresh 6-digit verification code has been sent to {norm_email}."
         if not sent:
@@ -453,7 +458,10 @@ def forgot_password(req: ForgotPasswordRequest):
     generic_msg = "If an account exists for this email, you will receive a password reset link."
     norm_email = req.email.strip().lower()
     if not norm_email or "@" not in norm_email or "." not in norm_email:
+        logger.info(f"[FORGOT-PASSWORD] Malformed email requested. Returning anti-enumeration response.")
         return GenericMessageResponse(success=True, message=generic_msg)
+
+    logger.info(f"[FORGOT-PASSWORD] Received password reset request for: {mask_email(norm_email)}")
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -462,6 +470,7 @@ def forgot_password(req: ForgotPasswordRequest):
         user_row = cursor.fetchone()
 
         if not user_row:
+            logger.info(f"[FORGOT-PASSWORD] Account not found for {mask_email(norm_email)}. Returning anti-enumeration response.")
             return GenericMessageResponse(success=True, message=generic_msg)
 
         now = datetime.now(timezone.utc)
@@ -476,6 +485,7 @@ def forgot_password(req: ForgotPasswordRequest):
         if last_reset:
             last_dt = parse_iso_utc(last_reset["created_at"])
             if (now - last_dt).total_seconds() < 60:
+                logger.info(f"[FORGOT-PASSWORD] Cooldown active (<60s) for {mask_email(norm_email)}. Throttling duplicate email.")
                 # Return generic message without dispatching duplicate email to prevent spamming
                 return GenericMessageResponse(success=True, message=generic_msg)
 
@@ -500,8 +510,16 @@ def forgot_password(req: ForgotPasswordRequest):
         reset_url = f"{base_url}?token={token}"
 
         # Dispatch email via Resend (never logging the token)
-        send_password_reset_email(norm_email, user_row["name"], reset_url)
+        sent, err, msg_id = send_password_reset_email(norm_email, user_row["name"], reset_url)
 
+        if not sent:
+            logger.error(f"❌ [FORGOT-PASSWORD ERROR]: Resend failed for {mask_email(norm_email)}: {err}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to dispatch password reset email through the email provider. Please verify server email configuration or try again later."
+            )
+
+        logger.info(f"✅ [FORGOT-PASSWORD SUCCESS]: Reset email dispatched to {mask_email(norm_email)} | Provider Msg ID: {msg_id}")
         return GenericMessageResponse(success=True, message=generic_msg)
 
 @router.post("/reset-password", response_model=GenericMessageResponse)
@@ -968,3 +986,235 @@ def list_users():
             )
             for r in rows
         ]
+
+@router.post("/google", response_model=AuthResponse)
+def google_auth(req: GoogleAuthRequest):
+    """
+    Authenticates or registers a caregiver via verified Google ID Token.
+    1. Cryptographically verifies Google ID Token signature and validity.
+    2. Maps to existing oauth_accounts record or safely links to verified email account.
+    3. If new user, creates active account with is_verified=1.
+    4. Issues standard application session token.
+    """
+    try:
+        google_user = verify_google_id_token(req.id_token)
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Google authentication failed: {str(ve)}"
+        )
+
+    sub = google_user["sub"]
+    email = google_user.get("email")
+    name = google_user.get("name") or "Google User"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Step 1: Check if this Google account is already mapped in oauth_accounts
+        cursor.execute("""
+            SELECT user_id FROM oauth_accounts
+            WHERE provider = 'google' AND provider_user_id = ?
+        """, (sub,))
+        oauth_row = cursor.fetchone()
+
+        user_id = None
+        if oauth_row:
+            user_id = oauth_row["user_id"]
+        elif email:
+            # Step 2: Check if an existing account shares this verified email
+            cursor.execute("SELECT id, is_verified FROM users WHERE email = ?", (email,))
+            existing_user = cursor.fetchone()
+            if existing_user:
+                user_id = existing_user["id"]
+                # Link this google identity to existing account
+                now_str = datetime.now(timezone.utc).isoformat()
+                cursor.execute("""
+                    INSERT OR IGNORE INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
+                    VALUES (?, 'google', ?, ?, ?)
+                """, (user_id, sub, email, now_str))
+                # Ensure is_verified is set to 1 since Google verified the email
+                cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
+                conn.commit()
+
+        # Step 3: If user does not exist, create a new verified user account
+        if not user_id:
+            now = datetime.now(timezone.utc)
+            created_at = now.isoformat()
+            placeholder_phone = f"g_{sub[:12]}"
+            # Ensure unique placeholder phone if multiple accounts
+            cursor.execute("SELECT id FROM users WHERE phone = ?", (placeholder_phone,))
+            if cursor.fetchone():
+                placeholder_phone = f"g_{sub[:8]}_{int(now.timestamp())}"
+
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district, is_verified, auth_provider, created_at)
+                VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_SALT', ?, ?, ?, ?, 1, 'google', ?)
+            """, (
+                name,
+                placeholder_phone,
+                email,
+                req.role or "parent",
+                req.language or "ગુજરાતી (Gujarati)",
+                req.state or "Gujarat (ગુજરાત)",
+                req.district or "Ahmedabad (અમદાવાદ)",
+                created_at
+            ))
+            user_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
+                VALUES (?, 'google', ?, ?, ?)
+            """, (user_id, sub, email, created_at))
+            conn.commit()
+
+        # Step 4: Fetch user record and return standard session token
+        cursor.execute("""
+            SELECT id, name, phone, email, role, language, state, district, is_verified, created_at
+            FROM users WHERE id = ?
+        """, (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not load authenticated user profile."
+            )
+
+        token = generate_token(user_row["id"], user_row["phone"])
+        return AuthResponse(
+            success=True,
+            message="Google Sign-In successful.",
+            token=token,
+            user=UserResponse(
+                id=user_row["id"],
+                name=user_row["name"],
+                phone=user_row["phone"],
+                email=user_row["email"],
+                role=user_row["role"] or "parent",
+                language=user_row["language"] or "ગુજરાતી (Gujarati)",
+                state=user_row["state"] or "Gujarat (ગુજરાત)",
+                district=user_row["district"] or "Ahmedabad (અમદાવાદ)",
+                is_verified=True,
+                created_at=user_row["created_at"]
+            ),
+            requires_verification=False,
+            email=user_row["email"]
+        )
+
+@router.post("/apple", response_model=AuthResponse)
+def apple_auth(req: AppleAuthRequest):
+    """
+    Authenticates or registers a caregiver via verified Apple Identity Token.
+    1. Cryptographically verifies Apple JWT signature with Apple's JWKS.
+    2. Handles Apple private relay email addresses and missing names on subsequent logins.
+    3. Maps or safely links to user account in oauth_accounts.
+    4. Issues standard application session token.
+    """
+    try:
+        apple_user = verify_apple_identity_token(req.identity_token)
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Apple authentication failed: {str(ve)}"
+        )
+
+    sub = apple_user["sub"]
+    # Email from token claims takes priority; fallback to request payload (sent on first authorization)
+    email = apple_user.get("email") or (req.email.strip().lower() if req.email else None)
+
+    # Compute full name if provided on first authorization
+    first_name = (req.first_name or "").strip()
+    last_name = (req.last_name or "").strip()
+    full_name = f"{first_name} {last_name}".strip()
+    if not full_name:
+        full_name = "Apple User"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Step 1: Check oauth_accounts for existing Apple mapping
+        cursor.execute("""
+            SELECT user_id FROM oauth_accounts
+            WHERE provider = 'apple' AND provider_user_id = ?
+        """, (sub,))
+        oauth_row = cursor.fetchone()
+
+        user_id = None
+        if oauth_row:
+            user_id = oauth_row["user_id"]
+        elif email:
+            # Step 2: Check if an existing account shares this email
+            cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+            existing_user = cursor.fetchone()
+            if existing_user:
+                user_id = existing_user["id"]
+                now_str = datetime.now(timezone.utc).isoformat()
+                cursor.execute("""
+                    INSERT OR IGNORE INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
+                    VALUES (?, 'apple', ?, ?, ?)
+                """, (user_id, sub, email, now_str))
+                cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
+                conn.commit()
+
+        # Step 3: Create new user if not found
+        if not user_id:
+            now = datetime.now(timezone.utc)
+            created_at = now.isoformat()
+            placeholder_phone = f"a_{sub[:12]}"
+            cursor.execute("SELECT id FROM users WHERE phone = ?", (placeholder_phone,))
+            if cursor.fetchone():
+                placeholder_phone = f"a_{sub[:8]}_{int(now.timestamp())}"
+
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district, is_verified, auth_provider, created_at)
+                VALUES (?, ?, ?, 'OAUTH_APPLE', 'OAUTH_SALT', ?, ?, ?, ?, 1, 'apple', ?)
+            """, (
+                full_name,
+                placeholder_phone,
+                email,
+                req.role or "parent",
+                req.language or "ગુજરાતી (Gujarati)",
+                req.state or "Gujarat (ગુજરાત)",
+                req.district or "Ahmedabad (અમદાવાદ)",
+                created_at
+            ))
+            user_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
+                VALUES (?, 'apple', ?, ?, ?)
+            """, (user_id, sub, email, created_at))
+            conn.commit()
+
+        # Step 4: Fetch user record and return standard session token
+        cursor.execute("""
+            SELECT id, name, phone, email, role, language, state, district, is_verified, created_at
+            FROM users WHERE id = ?
+        """, (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not load authenticated user profile."
+            )
+
+        token = generate_token(user_row["id"], user_row["phone"])
+        return AuthResponse(
+            success=True,
+            message="Apple Sign-In successful.",
+            token=token,
+            user=UserResponse(
+                id=user_row["id"],
+                name=user_row["name"],
+                phone=user_row["phone"],
+                email=user_row["email"],
+                role=user_row["role"] or "parent",
+                language=user_row["language"] or "ગુજરાતી (Gujarati)",
+                state=user_row["state"] or "Gujarat (ગુજરાત)",
+                district=user_row["district"] or "Ahmedabad (અમદાવાદ)",
+                is_verified=True,
+                created_at=user_row["created_at"]
+            ),
+            requires_verification=False,
+            email=user_row["email"]
+        )

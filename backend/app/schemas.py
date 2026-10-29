@@ -29,6 +29,24 @@ class ResetPasswordRequest(BaseModel):
     token: str = Field(..., min_length=10, description="Single-use password reset token")
     new_password: str = Field(..., min_length=6, description="New password (minimum 6 characters)")
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str = Field(..., min_length=10, description="Google ID Token (JWT) obtained from Google Sign-In SDK")
+    role: Optional[str] = Field("parent", description="User role: parent or clinician")
+    language: Optional[str] = Field("ગુજરાતી (Gujarati)", description="Preferred language")
+    state: Optional[str] = Field("Gujarat (ગુજરાત)", description="State")
+    district: Optional[str] = Field("Ahmedabad (અમદાવાદ)", description="District")
+
+class AppleAuthRequest(BaseModel):
+    identity_token: str = Field(..., min_length=10, description="Apple Identity Token (JWT) from Apple Sign-In")
+    authorization_code: Optional[str] = Field(None, description="Apple authorization code")
+    first_name: Optional[str] = Field(None, description="Given name (sent only on first login)")
+    last_name: Optional[str] = Field(None, description="Family name (sent only on first login)")
+    email: Optional[str] = Field(None, description="Email address (sent only on first login or private relay)")
+    role: Optional[str] = Field("parent", description="User role: parent or clinician")
+    language: Optional[str] = Field("ગુજરાતી (Gujarati)", description="Preferred language")
+    state: Optional[str] = Field("Gujarat (ગુજરાત)", description="State")
+    district: Optional[str] = Field("Ahmedabad (અમદાવાદ)", description="District")
+
 class GenericMessageResponse(BaseModel):
     success: bool
     message: str

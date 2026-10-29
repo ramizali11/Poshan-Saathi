@@ -52,11 +52,13 @@ def init_db():
             );
         """)
 
-        # Migration: Ensure is_verified column exists if database was created earlier
+        # Migration: Ensure is_verified and auth_provider columns exist if database was created earlier
         cursor.execute("PRAGMA table_info(users);")
         columns = [row["name"] for row in cursor.fetchall()]
         if "is_verified" not in columns:
             cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0;")
+        if "auth_provider" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local';")
         
         # Create an index on phone for fast lookups
         cursor.execute("""
@@ -66,6 +68,26 @@ def init_db():
         # Create an index on email
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+        """)
+
+        # Create oauth_accounts table for social login (Google, Apple)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS oauth_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                provider_user_id TEXT NOT NULL,
+                email TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(provider, provider_user_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_oauth_accounts_provider_sub ON oauth_accounts(provider, provider_user_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user_id ON oauth_accounts(user_id);
         """)
 
         # Create email_otps table for storing secure hashed OTPs

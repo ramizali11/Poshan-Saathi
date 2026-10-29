@@ -5,3 +5,9 @@ python-dotenv>=1.0.1
 httpx>=0.27.0
 gunicorn>=22.0.0
 resend>=2.50.0
+pyjwt[crypto]>=2.8.0
+google-auth>=2.29.0
+
+
+pyjwt[crypto]>=2.8.0
+google-auth>=2.29.0

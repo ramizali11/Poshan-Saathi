@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/widgets/social_auth_buttons.dart';
 
 class ParentRegistrationScreen extends StatefulWidget {
   const ParentRegistrationScreen({super.key});
@@ -374,6 +375,34 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
                     ],
                   ],
                 ),
+              ),
+              const SizedBox(height: 20),
+
+              // Social Sign-Up: Google & Apple
+              SocialAuthButtons(
+                isRegistration: true,
+                role: 'parent',
+                language: _selectedLanguage,
+                state: _selectedState,
+                district: _selectedDistrict,
+                onAuthSuccess: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Account created & logged in successfully!'),
+                      backgroundColor: AppColors.statusGreen,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
+                },
+                onAuthError: (error) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(error),
+                      backgroundColor: AppColors.statusRed,
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 14),
 

@@ -12,7 +12,20 @@ dotenv.load_dotenv(app_dir.parent.parent / ".env")
 
 logger = logging.getLogger("poshan_saathi.email")
 
-def send_otp_email(to_email: str, recipient_name: str, otp: str) -> Tuple[bool, str | None]:
+def mask_email(email: str) -> str:
+    """Safely masks an email address for privacy-compliant diagnostic logging."""
+    if not email or "@" not in email:
+        return "***"
+    parts = email.split("@", 1)
+    user = parts[0]
+    domain = parts[1]
+    if len(user) <= 2:
+        masked_user = f"{user[0]}*" if user else "*"
+    else:
+        masked_user = f"{user[:2]}***{user[-1]}"
+    return f"{masked_user}@{domain}"
+
+def send_otp_email(to_email: str, recipient_name: str, otp: str) -> Tuple[bool, str | None, str | None]:
     """
     Sends a 6-digit OTP verification email via the Resend API.
     
@@ -22,15 +35,15 @@ def send_otp_email(to_email: str, recipient_name: str, otp: str) -> Tuple[bool, 
         otp: 6-digit cryptographically secure OTP string
         
     Returns:
-        (success: bool, error_message: str | None)
+        (success: bool, error_message: str | None, provider_message_id: str | None)
     """
     api_key = os.getenv("RESEND_API_KEY", "").strip()
     from_email = os.getenv("RESEND_FROM_EMAIL", "PoshanSaathi <onboarding@resend.dev>").strip()
 
     if not api_key:
-        err_msg = "RESEND_API_KEY environment variable is not configured."
-        logger.warning(f"⚠️ [EMAIL ERROR]: {err_msg} - OTP for {to_email} was: {otp}")
-        return False, err_msg
+        err_msg = "RESEND_API_KEY environment variable is not configured on the server."
+        logger.warning(f"⚠️ [EMAIL CONFIG ERROR]: {err_msg} (Recipient: {mask_email(to_email)})")
+        return False, err_msg, None
 
     subject = f"Your PoshanSaathi Verification Code: {otp}"
 
@@ -176,14 +189,25 @@ PoshanSaathi - Maternal & Child Nutrition Care
             "text": plain_text,
         }
         res = resend.Emails.send(params)
-        logger.info(f"✅ [EMAIL SUCCESS]: Resend sent verification email to {to_email}.")
-        return True, None
+        
+        msg_id = None
+        if isinstance(res, dict):
+            if "error" in res and res["error"]:
+                err_detail = res["error"]
+                logger.error(f"❌ [RESEND API REJECTED]: Provider returned error: {err_detail} for {mask_email(to_email)}")
+                return False, f"Email delivery provider error: {err_detail}", None
+            msg_id = res.get("id") or (res.get("data") or {}).get("id")
+        elif hasattr(res, "id"):
+            msg_id = getattr(res, "id")
+
+        logger.info(f"✅ [EMAIL ACCEPTED]: Resend accepted OTP email for {mask_email(to_email)} | Provider Message ID: {msg_id}")
+        return True, None, str(msg_id) if msg_id else None
     except Exception as e:
         logger.warning(f"⚠️ [EMAIL FALLBACK]: Resend SDK failed: {e}. Attempting direct HTTP fallback...")
 
         try:
             import httpx
-            with httpx.Client(timeout=10.0) as client:
+            with httpx.Client(timeout=12.0) as client:
                 response = client.post(
                     "https://api.resend.com/emails",
                     headers={
@@ -199,18 +223,20 @@ PoshanSaathi - Maternal & Child Nutrition Care
                     },
                 )
                 if response.status_code in (200, 201):
-                    logger.info(f"✅ [EMAIL SUCCESS]: Direct HTTP Resend sent verification email to {to_email}.")
-                    return True, None
+                    data = response.json() if response.text else {}
+                    msg_id = data.get("id")
+                    logger.info(f"✅ [EMAIL ACCEPTED HTTP]: Direct HTTP Resend sent OTP to {mask_email(to_email)} | Provider Message ID: {msg_id}")
+                    return True, None, str(msg_id) if msg_id else None
                 else:
-                    err = f"Resend API returned {response.status_code}: {response.text}"
-                    logger.error(f"❌ [EMAIL FAILURE]: {err}")
-                    return False, err
+                    err = f"Resend API returned HTTP {response.status_code}: {response.text}"
+                    logger.error(f"❌ [EMAIL FAILURE HTTP]: {err} (Recipient: {mask_email(to_email)})")
+                    return False, err, None
         except Exception as http_err:
-            logger.error(f"❌ [EMAIL EXCEPTION]: Direct HTTP call also failed: {http_err}")
-            return False, str(http_err)
+            logger.error(f"❌ [EMAIL EXCEPTION]: Direct HTTP call also failed: {http_err} (Recipient: {mask_email(to_email)})")
+            return False, str(http_err), None
 
 
-def send_password_reset_email(to_email: str, recipient_name: str, reset_url: str) -> Tuple[bool, str | None]:
+def send_password_reset_email(to_email: str, recipient_name: str, reset_url: str) -> Tuple[bool, str | None, str | None]:
     """
     Sends a secure password reset link email via the Resend API.
     
@@ -220,15 +246,15 @@ def send_password_reset_email(to_email: str, recipient_name: str, reset_url: str
         reset_url: Secure URL containing single-use token (expires in 15 minutes)
         
     Returns:
-        (success: bool, error_message: str | None)
+        (success: bool, error_message: str | None, provider_message_id: str | None)
     """
     api_key = os.getenv("RESEND_API_KEY", "").strip()
     from_email = os.getenv("RESEND_FROM_EMAIL", "PoshanSaathi <onboarding@resend.dev>").strip()
 
     if not api_key:
-        err_msg = "RESEND_API_KEY environment variable is not configured."
-        logger.warning(f"⚠️ [EMAIL ERROR]: {err_msg} - Password reset requested for {to_email}")
-        return False, err_msg
+        err_msg = "RESEND_API_KEY environment variable is not configured on the server."
+        logger.warning(f"⚠️ [EMAIL CONFIG ERROR]: {err_msg} (Recipient: {mask_email(to_email)})")
+        return False, err_msg, None
 
     subject = "Reset Your PoshanSaathi Password"
 
@@ -390,14 +416,25 @@ PoshanSaathi - Maternal & Child Nutrition Care
             "text": plain_text,
         }
         res = resend.Emails.send(params)
-        logger.info(f"✅ [RESET EMAIL SUCCESS]: Password reset email dispatched to {to_email}.")
-        return True, None
+
+        msg_id = None
+        if isinstance(res, dict):
+            if "error" in res and res["error"]:
+                err_detail = res["error"]
+                logger.error(f"❌ [RESEND API REJECTED]: Provider returned error: {err_detail} for {mask_email(to_email)}")
+                return False, f"Email delivery provider error: {err_detail}", None
+            msg_id = res.get("id") or (res.get("data") or {}).get("id")
+        elif hasattr(res, "id"):
+            msg_id = getattr(res, "id")
+
+        logger.info(f"✅ [RESET EMAIL ACCEPTED]: Resend accepted reset email for {mask_email(to_email)} | Provider Message ID: {msg_id}")
+        return True, None, str(msg_id) if msg_id else None
     except Exception as e:
         logger.warning(f"⚠️ [EMAIL FALLBACK]: Resend SDK failed: {e}. Attempting direct HTTP fallback...")
 
         try:
             import httpx
-            with httpx.Client(timeout=10.0) as client:
+            with httpx.Client(timeout=12.0) as client:
                 response = client.post(
                     "https://api.resend.com/emails",
                     headers={
@@ -413,12 +450,14 @@ PoshanSaathi - Maternal & Child Nutrition Care
                     },
                 )
                 if response.status_code in (200, 201):
-                    logger.info(f"✅ [RESET EMAIL SUCCESS]: Direct HTTP Resend sent password reset email to {to_email}.")
-                    return True, None
+                    data = response.json() if response.text else {}
+                    msg_id = data.get("id")
+                    logger.info(f"✅ [RESET EMAIL ACCEPTED HTTP]: Direct HTTP Resend sent reset email to {mask_email(to_email)} | Provider Message ID: {msg_id}")
+                    return True, None, str(msg_id) if msg_id else None
                 else:
-                    err = f"Resend API returned {response.status_code}: {response.text}"
-                    logger.error(f"❌ [EMAIL FAILURE]: {err}")
-                    return False, err
+                    err = f"Resend API returned HTTP {response.status_code}: {response.text}"
+                    logger.error(f"❌ [EMAIL FAILURE HTTP]: {err} (Recipient: {mask_email(to_email)})")
+                    return False, err, None
         except Exception as http_err:
-            logger.error(f"❌ [EMAIL EXCEPTION]: Direct HTTP call also failed: {http_err}")
-            return False, str(http_err)
+            logger.error(f"❌ [EMAIL EXCEPTION]: Direct HTTP call also failed: {http_err} (Recipient: {mask_email(to_email)})")
+            return False, str(http_err), None
