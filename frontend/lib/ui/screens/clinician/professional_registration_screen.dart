@@ -10,15 +10,24 @@ class ProfessionalRegistrationScreen extends StatefulWidget {
 }
 
 class _ProfessionalRegistrationScreenState extends State<ProfessionalRegistrationScreen> {
-  final _nameController = TextEditingController(text: 'Dr. Meera Patel');
-  final _regNumController = TextEditingController(text: 'G-48291');
-  final _qualificationController = TextEditingController(text: 'MD Pediatrics, Fellowship in Infant Nutrition');
-  final _hospitalController = TextEditingController(text: 'Civil Hospital / Apollo Cradle, Ahmedabad');
+  final _nameController = TextEditingController();
+  final _regNumController = TextEditingController();
+  final _qualificationController = TextEditingController();
+  final _hospitalController = TextEditingController();
 
   String _selectedRole = 'Pediatrician (MD/DCH)';
   String _selectedSector = 'Ahmedabad Central - Sector 14 (Vadaj & Usmanpura)';
-  bool _hasUploadedCert = true;
-  bool _isCertified = true;
+  bool _hasUploadedCert = false;
+  bool _isCertified = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _regNumController.dispose();
+    _qualificationController.dispose();
+    _hospitalController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

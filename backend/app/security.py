@@ -68,11 +68,11 @@ def verify_password(password: str, salt: str, stored_hash: str) -> bool:
     computed_hash = hash_password(password, salt)
     return hmac.compare_digest(computed_hash, stored_hash)
 
-def generate_token(user_id: int, phone: str) -> str:
+def generate_token(user_id: int, phone: str | None = None) -> str:
     """Generates a signed, self-contained token containing user ID and timestamp."""
     payload = {
         "uid": user_id,
-        "phone": phone,
+        "phone": phone or "",
         "iat": int(time.time()),
         "exp": int(time.time()) + (30 * 86400) # 30 days validity
     }

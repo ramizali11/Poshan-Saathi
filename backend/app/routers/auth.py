@@ -30,6 +30,7 @@ from ..schemas import (
     ResetPasswordRequest,
     GoogleAuthRequest,
     AppleAuthRequest,
+    UpdateProfileRequest,
     GenericMessageResponse,
     UserResponse,
     AuthResponse,
@@ -45,6 +46,25 @@ def clean_phone(phone: str) -> str:
         digits = digits[2:]
     return digits
 
+def is_valid_phone(phone: Optional[str]) -> bool:
+    """
+    Validates that a phone string is a genuine 10-digit mobile number,
+    never a generated identifier (e.g., g_..., a_...) or arbitrary string.
+    """
+    if not phone:
+        return False
+    str_val = str(phone).strip()
+    if str_val.startswith(("g_", "a_", "sub_", "id_")):
+        return False
+    clean = clean_phone(str_val)
+    return len(clean) == 10 and clean.isdigit() and clean[0] in "6789"
+
+def sanitize_phone_value(phone: Optional[str]) -> Optional[str]:
+    """Sanitizes phone: returns genuine 10-digit phone or None if placeholder/identifier/invalid."""
+    if is_valid_phone(phone):
+        return clean_phone(str(phone))
+    return None
+
 def parse_iso_utc(ts: str) -> datetime:
     """Safely parses an ISO-8601 string into a timezone-aware UTC datetime."""
     clean_ts = ts.replace("Z", "+00:00")
@@ -59,12 +79,12 @@ def register(req: UserRegisterRequest):
     Registers a new caregiver, persists profile with unverified status into SQLite,
     generates a cryptographically secure 5-minute OTP, and sends verification email via Resend.
     """
-    norm_phone = clean_phone(req.phone)
-    if len(norm_phone) < 10:
+    if req.phone.strip().startswith(("g_", "a_", "sub_", "id_")) or not is_valid_phone(req.phone):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Please provide a valid 10-digit mobile number."
+            detail="Please provide a valid 10-digit mobile number starting with 6, 7, 8, or 9."
         )
+    norm_phone = clean_phone(req.phone)
 
     norm_email = req.email.strip().lower()
     if "@" not in norm_email or "." not in norm_email:
@@ -196,7 +216,8 @@ def verify_otp_endpoint(req: VerifyOtpRequest):
             )
 
         if user_row["is_verified"] == 1:
-            token = generate_token(user_row["id"], user_row["phone"])
+            safe_phone = sanitize_phone_value(user_row["phone"])
+            token = generate_token(user_row["id"], safe_phone)
             return AuthResponse(
                 success=True,
                 message="Your email is already verified. You can proceed.",
@@ -204,7 +225,7 @@ def verify_otp_endpoint(req: VerifyOtpRequest):
                 user=UserResponse(
                     id=user_row["id"],
                     name=user_row["name"],
-                    phone=user_row["phone"],
+                    phone=safe_phone,
                     email=user_row["email"],
                     role=user_row["role"] or "parent",
                     language=user_row["language"] or "ગુજરાતી (Gujarati)",
@@ -278,11 +299,12 @@ def verify_otp_endpoint(req: VerifyOtpRequest):
         cursor.execute("UPDATE email_otps SET is_used = 1 WHERE id = ?", (otp_row["id"],))
         cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_row["id"],))
 
-        token = generate_token(user_row["id"], user_row["phone"])
+        safe_phone = sanitize_phone_value(user_row["phone"])
+        token = generate_token(user_row["id"], safe_phone)
         user_data = UserResponse(
             id=user_row["id"],
             name=user_row["name"],
-            phone=user_row["phone"],
+            phone=safe_phone,
             email=user_row["email"],
             role=user_row["role"] or "parent",
             language=user_row["language"] or "ગુજરાતી (Gujarati)",
@@ -396,7 +418,8 @@ def login(req: UserLoginRequest):
 
         # Query user by phone or email
         cursor.execute("""
-            SELECT id, name, phone, email, password_hash, salt, role, language, state, district, is_verified, created_at
+            SELECT id, name, phone, email, password_hash, salt, role, language, state, district,
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
             FROM users
             WHERE phone = ? OR email = ?
         """, (norm_phone, norm_email))
@@ -423,17 +446,29 @@ def login(req: UserLoginRequest):
             )
 
         user_id = row["id"]
-        token = generate_token(user_id, row["phone"])
+        safe_phone = sanitize_phone_value(row["phone"])
+        if row["phone"] and not safe_phone:
+            cursor.execute("UPDATE users SET phone = NULL WHERE id = ?", (user_id,))
+            conn.commit()
+
+        token = generate_token(user_id, safe_phone)
 
         user_data = UserResponse(
             id=user_id,
             name=row["name"],
-            phone=row["phone"],
+            phone=safe_phone,
             email=row["email"],
             role=row["role"] or "parent",
             language=row["language"] or "ગુજરાતી (Gujarati)",
-            state=row["state"] or "Gujarat (ગુજરાત)",
-            district=row["district"] or "Ahmedabad (અમદાવાદ)",
+            state=row["state"],
+            district=row["district"],
+            dob=row["dob"],
+            gender=row["gender"],
+            address=row["address"],
+            city=row["city"],
+            pin_code=row["pin_code"],
+            avatar_url=row["avatar_url"],
+            auth_provider=row["auth_provider"] or "local",
             is_verified=bool(row["is_verified"]),
             created_at=row["created_at"]
         )
@@ -933,7 +968,8 @@ def get_current_user(
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, name, phone, email, role, language, state, district, is_verified, created_at
+            SELECT id, name, phone, email, role, language, state, district,
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
             FROM users
             WHERE id = ?
         """, (uid,))
@@ -945,6 +981,175 @@ def get_current_user(
                 detail="User profile not found in database."
             )
 
+        safe_phone = sanitize_phone_value(row["phone"])
+        if row["phone"] and not safe_phone:
+            cursor.execute("UPDATE users SET phone = NULL WHERE id = ?", (uid,))
+            conn.commit()
+
+        return UserResponse(
+            id=row["id"],
+            name=row["name"],
+            phone=safe_phone,
+            email=row["email"],
+            role=row["role"] or "parent",
+            language=row["language"] or "ગુજરાતી (Gujarati)",
+            state=row["state"],
+            district=row["district"],
+            dob=row["dob"],
+            gender=row["gender"],
+            address=row["address"],
+            city=row["city"],
+            pin_code=row["pin_code"],
+            avatar_url=row["avatar_url"],
+            auth_provider=row["auth_provider"] or "local",
+            is_verified=bool(row["is_verified"]),
+            created_at=row["created_at"]
+        )
+
+@router.put("/profile", response_model=UserResponse)
+@router.patch("/profile", response_model=UserResponse)
+def update_profile(
+    req: UpdateProfileRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Updates the authenticated user's profile details.
+    Only allows authenticated users (via Bearer token) to edit their own profile.
+    Validates:
+      - 10-digit phone number if provided (and enforces uniqueness against other accounts).
+      - Rejects system identifiers (e.g. g_..., a_...) or arbitrary placeholder strings.
+      - 6-digit PIN code if provided.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please provide a valid Bearer token.",
+        )
+
+    token = authorization.split(" ")[1]
+    payload = verify_token(token)
+    if not payload or not payload.get("uid"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token. Please log in again.",
+        )
+
+    user_id = payload["uid"]
+
+    # Validate phone if provided
+    norm_phone = None
+    update_phone = False
+    if req.phone is not None:
+        update_phone = True
+        raw_phone = req.phone.strip()
+        if raw_phone:
+            # Explicitly reject generated identifiers or placeholder formats
+            if raw_phone.startswith(("g_", "a_", "sub_", "id_")):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid mobile number. Google/system identifiers cannot be saved as phone numbers.",
+                )
+            if not is_valid_phone(raw_phone):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Please provide a valid 10-digit Indian mobile number (e.g., 9876543210).",
+                )
+            norm_phone = clean_phone(raw_phone)
+
+    # Validate PIN code if provided
+    norm_pin = None
+    if req.pin_code is not None:
+        clean_pin = req.pin_code.strip()
+        if clean_pin:
+            if len(clean_pin) != 6 or not clean_pin.isdigit():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Please provide a valid 6-digit postal PIN code.",
+                )
+            norm_pin = clean_pin
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Verify user exists
+        cursor.execute("SELECT id, phone FROM users WHERE id = ?", (user_id,))
+        current_user = cursor.fetchone()
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found.",
+            )
+
+        # If phone is being changed/set, ensure it's not taken by another user
+        if norm_phone:
+            cursor.execute("SELECT id FROM users WHERE phone = ? AND id != ?", (norm_phone, user_id))
+            if cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Mobile number {norm_phone} is already linked to another account.",
+                )
+
+        # Build dynamic update query
+        updates = []
+        params = []
+
+        if req.name is not None and req.name.strip():
+            updates.append("name = ?")
+            params.append(req.name.strip())
+
+        if update_phone:
+            updates.append("phone = ?")
+            params.append(norm_phone)
+
+        if req.dob is not None:
+            updates.append("dob = ?")
+            params.append(req.dob.strip() if req.dob.strip() else None)
+
+        if req.gender is not None:
+            updates.append("gender = ?")
+            params.append(req.gender.strip() if req.gender.strip() else None)
+
+        if req.address is not None:
+            updates.append("address = ?")
+            params.append(req.address.strip() if req.address.strip() else None)
+
+        if req.city is not None:
+            updates.append("city = ?")
+            params.append(req.city.strip() if req.city.strip() else None)
+
+        if req.state is not None:
+            updates.append("state = ?")
+            params.append(req.state.strip() if req.state.strip() else None)
+
+        if req.district is not None:
+            updates.append("district = ?")
+            params.append(req.district.strip() if req.district.strip() else None)
+
+        if req.pin_code is not None:
+            updates.append("pin_code = ?")
+            params.append(norm_pin)
+
+        if req.avatar_url is not None:
+            updates.append("avatar_url = ?")
+            params.append(req.avatar_url.strip() if req.avatar_url.strip() else None)
+
+        if req.language is not None:
+            updates.append("language = ?")
+            params.append(req.language.strip() if req.language.strip() else None)
+
+        if updates:
+            params.append(user_id)
+            cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", tuple(params))
+            conn.commit()
+
+        # Fetch updated record
+        cursor.execute("""
+            SELECT id, name, phone, email, role, language, state, district,
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
+            FROM users WHERE id = ?
+        """, (user_id,))
+        row = cursor.fetchone()
+
         return UserResponse(
             id=row["id"],
             name=row["name"],
@@ -952,10 +1157,17 @@ def get_current_user(
             email=row["email"],
             role=row["role"] or "parent",
             language=row["language"] or "ગુજરાતી (Gujarati)",
-            state=row["state"] or "Gujarat (ગુજરાત)",
-            district=row["district"] or "Ahmedabad (અમદાવાદ)",
+            state=row["state"],
+            district=row["district"],
+            dob=row["dob"],
+            gender=row["gender"],
+            address=row["address"],
+            city=row["city"],
+            pin_code=row["pin_code"],
+            avatar_url=row["avatar_url"],
+            auth_provider=row["auth_provider"] or "local",
             is_verified=bool(row["is_verified"]),
-            created_at=row["created_at"]
+            created_at=row["created_at"],
         )
 
 @router.get("/users", response_model=List[UserResponse])
@@ -966,7 +1178,8 @@ def list_users():
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, name, phone, email, role, language, state, district, is_verified, created_at
+            SELECT id, name, phone, email, role, language, state, district,
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
             FROM users
             ORDER BY id DESC
         """)
@@ -975,12 +1188,19 @@ def list_users():
             UserResponse(
                 id=r["id"],
                 name=r["name"],
-                phone=r["phone"],
+                phone=sanitize_phone_value(r["phone"]),
                 email=r["email"],
                 role=r["role"] or "parent",
                 language=r["language"] or "ગુજરાતી (Gujarati)",
-                state=r["state"] or "Gujarat (ગુજરાત)",
-                district=r["district"] or "Ahmedabad (અમદાવાદ)",
+                state=r["state"],
+                district=r["district"],
+                dob=r["dob"],
+                gender=r["gender"],
+                address=r["address"],
+                city=r["city"],
+                pin_code=r["pin_code"],
+                avatar_url=r["avatar_url"],
+                auth_provider=r["auth_provider"] or "local",
                 is_verified=bool(r["is_verified"]),
                 created_at=r["created_at"]
             )
@@ -993,7 +1213,7 @@ def google_auth(req: GoogleAuthRequest):
     Authenticates or registers a caregiver via verified Google ID Token.
     1. Cryptographically verifies Google ID Token signature and validity.
     2. Maps to existing oauth_accounts record or safely links to verified email account.
-    3. If new user, creates active account with is_verified=1.
+    3. If new user, creates active account with is_verified=1, phone=NULL (never placeholder).
     4. Issues standard application session token.
     """
     try:
@@ -1007,6 +1227,7 @@ def google_auth(req: GoogleAuthRequest):
     sub = google_user["sub"]
     email = google_user.get("email")
     name = google_user.get("name") or "Google User"
+    picture = google_user.get("picture")
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -1021,43 +1242,53 @@ def google_auth(req: GoogleAuthRequest):
         user_id = None
         if oauth_row:
             user_id = oauth_row["user_id"]
+            # Clean legacy placeholder phone if present
+            cursor.execute("""
+                UPDATE users 
+                SET phone = NULL 
+                WHERE id = ? AND (phone LIKE 'g_%' OR phone LIKE 'a_%' OR phone LIKE 'sub_%')
+            """, (user_id,))
+            if picture:
+                cursor.execute("UPDATE users SET avatar_url = COALESCE(avatar_url, ?) WHERE id = ?", (picture, user_id))
+            conn.commit()
         elif email:
             # Step 2: Check if an existing account shares this verified email
             cursor.execute("SELECT id, is_verified FROM users WHERE email = ?", (email,))
             existing_user = cursor.fetchone()
             if existing_user:
                 user_id = existing_user["id"]
-                # Link this google identity to existing account
                 now_str = datetime.now(timezone.utc).isoformat()
                 cursor.execute("""
                     INSERT OR IGNORE INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
                     VALUES (?, 'google', ?, ?, ?)
                 """, (user_id, sub, email, now_str))
-                # Ensure is_verified is set to 1 since Google verified the email
-                cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
+                # Ensure is_verified is set to 1 and clean legacy placeholder phone
+                cursor.execute("""
+                    UPDATE users 
+                    SET is_verified = 1,
+                        phone = CASE WHEN phone LIKE 'g_%' OR phone LIKE 'a_%' OR phone LIKE 'sub_%' THEN NULL ELSE phone END,
+                        avatar_url = COALESCE(avatar_url, ?) 
+                    WHERE id = ?
+                """, (picture, user_id))
                 conn.commit()
 
-        # Step 3: If user does not exist, create a new verified user account
+        # Step 3: If user does not exist, create a new verified user account with NULL phone
         if not user_id:
             now = datetime.now(timezone.utc)
             created_at = now.isoformat()
-            placeholder_phone = f"g_{sub[:12]}"
-            # Ensure unique placeholder phone if multiple accounts
-            cursor.execute("SELECT id FROM users WHERE phone = ?", (placeholder_phone,))
-            if cursor.fetchone():
-                placeholder_phone = f"g_{sub[:8]}_{int(now.timestamp())}"
 
             cursor.execute("""
-                INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district, is_verified, auth_provider, created_at)
-                VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_SALT', ?, ?, ?, ?, 1, 'google', ?)
+                INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district,
+                                  dob, gender, address, city, pin_code, avatar_url, is_verified, auth_provider, created_at)
+                VALUES (?, NULL, ?, 'OAUTH_GOOGLE', 'OAUTH_SALT', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, 1, 'google', ?)
             """, (
                 name,
-                placeholder_phone,
                 email,
                 req.role or "parent",
                 req.language or "ગુજરાતી (Gujarati)",
-                req.state or "Gujarat (ગુજરાત)",
-                req.district or "Ahmedabad (અમદાવાદ)",
+                req.state,
+                req.district,
+                picture,
                 created_at
             ))
             user_id = cursor.lastrowid
@@ -1070,7 +1301,8 @@ def google_auth(req: GoogleAuthRequest):
 
         # Step 4: Fetch user record and return standard session token
         cursor.execute("""
-            SELECT id, name, phone, email, role, language, state, district, is_verified, created_at
+            SELECT id, name, phone, email, role, language, state, district,
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
             FROM users WHERE id = ?
         """, (user_id,))
         user_row = cursor.fetchone()
@@ -1080,7 +1312,12 @@ def google_auth(req: GoogleAuthRequest):
                 detail="Could not load authenticated user profile."
             )
 
-        token = generate_token(user_row["id"], user_row["phone"])
+        safe_phone = sanitize_phone_value(user_row["phone"])
+        if user_row["phone"] and not safe_phone:
+            cursor.execute("UPDATE users SET phone = NULL WHERE id = ?", (user_id,))
+            conn.commit()
+
+        token = generate_token(user_row["id"], safe_phone)
         return AuthResponse(
             success=True,
             message="Google Sign-In successful.",
@@ -1088,12 +1325,19 @@ def google_auth(req: GoogleAuthRequest):
             user=UserResponse(
                 id=user_row["id"],
                 name=user_row["name"],
-                phone=user_row["phone"],
+                phone=safe_phone,
                 email=user_row["email"],
                 role=user_row["role"] or "parent",
                 language=user_row["language"] or "ગુજરાતી (Gujarati)",
-                state=user_row["state"] or "Gujarat (ગુજરાત)",
-                district=user_row["district"] or "Ahmedabad (અમદાવાદ)",
+                state=user_row["state"],
+                district=user_row["district"],
+                dob=user_row["dob"],
+                gender=user_row["gender"],
+                address=user_row["address"],
+                city=user_row["city"],
+                pin_code=user_row["pin_code"],
+                avatar_url=user_row["avatar_url"],
+                auth_provider=user_row["auth_provider"] or "google",
                 is_verified=True,
                 created_at=user_row["created_at"]
             ),
@@ -1156,26 +1400,22 @@ def apple_auth(req: AppleAuthRequest):
                 cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
                 conn.commit()
 
-        # Step 3: Create new user if not found
+        # Step 3: Create new user if not found with NULL phone
         if not user_id:
             now = datetime.now(timezone.utc)
             created_at = now.isoformat()
-            placeholder_phone = f"a_{sub[:12]}"
-            cursor.execute("SELECT id FROM users WHERE phone = ?", (placeholder_phone,))
-            if cursor.fetchone():
-                placeholder_phone = f"a_{sub[:8]}_{int(now.timestamp())}"
 
             cursor.execute("""
-                INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district, is_verified, auth_provider, created_at)
-                VALUES (?, ?, ?, 'OAUTH_APPLE', 'OAUTH_SALT', ?, ?, ?, ?, 1, 'apple', ?)
+                INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district,
+                                  dob, gender, address, city, pin_code, avatar_url, is_verified, auth_provider, created_at)
+                VALUES (?, NULL, ?, 'OAUTH_APPLE', 'OAUTH_SALT', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'apple', ?)
             """, (
                 full_name,
-                placeholder_phone,
                 email,
                 req.role or "parent",
                 req.language or "ગુજરાતી (Gujarati)",
-                req.state or "Gujarat (ગુજરાત)",
-                req.district or "Ahmedabad (અમદાવાદ)",
+                req.state,
+                req.district,
                 created_at
             ))
             user_id = cursor.lastrowid
@@ -1188,7 +1428,8 @@ def apple_auth(req: AppleAuthRequest):
 
         # Step 4: Fetch user record and return standard session token
         cursor.execute("""
-            SELECT id, name, phone, email, role, language, state, district, is_verified, created_at
+            SELECT id, name, phone, email, role, language, state, district,
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
             FROM users WHERE id = ?
         """, (user_id,))
         user_row = cursor.fetchone()
@@ -1198,7 +1439,12 @@ def apple_auth(req: AppleAuthRequest):
                 detail="Could not load authenticated user profile."
             )
 
-        token = generate_token(user_row["id"], user_row["phone"])
+        safe_phone = sanitize_phone_value(user_row["phone"])
+        if user_row["phone"] and not safe_phone:
+            cursor.execute("UPDATE users SET phone = NULL WHERE id = ?", (user_id,))
+            conn.commit()
+
+        token = generate_token(user_row["id"], safe_phone)
         return AuthResponse(
             success=True,
             message="Apple Sign-In successful.",
@@ -1206,12 +1452,19 @@ def apple_auth(req: AppleAuthRequest):
             user=UserResponse(
                 id=user_row["id"],
                 name=user_row["name"],
-                phone=user_row["phone"],
+                phone=safe_phone,
                 email=user_row["email"],
                 role=user_row["role"] or "parent",
                 language=user_row["language"] or "ગુજરાતી (Gujarati)",
-                state=user_row["state"] or "Gujarat (ગુજરાત)",
-                district=user_row["district"] or "Ahmedabad (અમદાવાદ)",
+                state=user_row["state"],
+                district=user_row["district"],
+                dob=user_row["dob"],
+                gender=user_row["gender"],
+                address=user_row["address"],
+                city=user_row["city"],
+                pin_code=user_row["pin_code"],
+                avatar_url=user_row["avatar_url"],
+                auth_provider=user_row["auth_provider"] or "apple",
                 is_verified=True,
                 created_at=user_row["created_at"]
             ),

@@ -11,8 +11,14 @@ class AddChildProfileScreen extends StatefulWidget {
 }
 
 class _AddChildProfileScreenState extends State<AddChildProfileScreen> {
-  final _nameController = TextEditingController(text: 'Aarav Shah');
+  final _nameController = TextEditingController();
   String _selectedGender = 'Boy'; // 'Boy' or 'Girl'
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

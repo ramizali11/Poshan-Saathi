@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
+import 'core/services/user_session.dart';
 import 'ui/screens/auth/welcome_role_screen.dart';
 import 'ui/screens/auth/onboarding_carousel_screen.dart';
 import 'ui/screens/auth/parent_registration_screen.dart';
@@ -9,6 +10,7 @@ import 'ui/screens/auth/forgot_password_screen.dart';
 import 'ui/screens/auth/reset_password_screen.dart';
 import 'ui/screens/onboarding/add_child_profile_screen.dart';
 import 'ui/screens/parent/parent_main_scaffold.dart';
+import 'ui/screens/parent/edit_profile_screen.dart';
 import 'ui/screens/parent/recipe_details_screen.dart';
 import 'ui/screens/parent/nutrition_risk_alerts_screen.dart';
 import 'ui/screens/parent/anganwadi_connect_screen.dart';
@@ -17,8 +19,9 @@ import 'ui/screens/clinician/professional_registration_screen.dart';
 import 'ui/screens/clinician/clinician_dashboard_screen.dart';
 import 'ui/screens/clinician/assigned_children_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await UserSession.instance.init();
   runApp(const PoshanSaathiApp());
 }
 
@@ -43,6 +46,7 @@ class PoshanSaathiApp extends StatelessWidget {
         '/reset-password': (context) => const ResetPasswordScreen(),
         '/add_child': (context) => const AddChildProfileScreen(),
         '/dashboard': (context) => const ParentMainScaffold(initialIndex: 0),
+        '/edit_profile': (context) => const EditProfileScreen(),
         '/meals': (context) => const ParentMainScaffold(initialIndex: 1),
         '/growth': (context) => const ParentMainScaffold(initialIndex: 2),
         '/ai_assistant': (context) => const ParentMainScaffold(initialIndex: 3),

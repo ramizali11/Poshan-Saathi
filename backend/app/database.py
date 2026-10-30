@@ -10,7 +10,7 @@ DB_PATH = os.getenv("DB_PATH", os.path.join(BASE_DIR, "poshan_saathi.db"))
 
 def get_db_connection() -> sqlite3.Connection:
     """Returns a SQLite connection with row_factory set to sqlite3.Row for dict-like access."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=20.0)
     conn.row_factory = sqlite3.Row
     # Enable foreign keys
     conn.execute("PRAGMA foreign_keys = ON;")
@@ -39,26 +39,95 @@ def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                phone TEXT UNIQUE NOT NULL,
+                phone TEXT UNIQUE,
                 email TEXT,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
+                password_hash TEXT,
+                salt TEXT,
                 role TEXT DEFAULT 'parent',
                 language TEXT DEFAULT 'Gujarati',
                 state TEXT DEFAULT 'Gujarat',
                 district TEXT DEFAULT 'Ahmedabad',
+                dob TEXT,
+                gender TEXT,
+                address TEXT,
+                city TEXT,
+                pin_code TEXT,
+                avatar_url TEXT,
                 is_verified INTEGER DEFAULT 0,
+                auth_provider TEXT DEFAULT 'local',
                 created_at TEXT NOT NULL
             );
         """)
 
-        # Migration: Ensure is_verified and auth_provider columns exist if database was created earlier
+        # Migration: Ensure phone is nullable (for OAuth users who haven't added phone yet)
         cursor.execute("PRAGMA table_info(users);")
-        columns = [row["name"] for row in cursor.fetchall()]
-        if "is_verified" not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0;")
-        if "auth_provider" not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local';")
+        table_info = cursor.fetchall()
+        phone_info = next((row for row in table_info if row["name"] == "phone"), None)
+        if phone_info and phone_info["notnull"] == 1:
+            cursor.execute("PRAGMA foreign_keys = OFF;")
+            cursor.execute("""
+                CREATE TABLE users_migration (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    phone TEXT UNIQUE,
+                    email TEXT,
+                    password_hash TEXT,
+                    salt TEXT,
+                    role TEXT DEFAULT 'parent',
+                    language TEXT DEFAULT 'Gujarati',
+                    state TEXT DEFAULT 'Gujarat',
+                    district TEXT DEFAULT 'Ahmedabad',
+                    dob TEXT,
+                    gender TEXT,
+                    address TEXT,
+                    city TEXT,
+                    pin_code TEXT,
+                    avatar_url TEXT,
+                    is_verified INTEGER DEFAULT 0,
+                    auth_provider TEXT DEFAULT 'local',
+                    created_at TEXT NOT NULL
+                );
+            """)
+            cursor.execute("""
+                INSERT INTO users_migration (
+                    id, name, phone, email, password_hash, salt, role, language, state, district,
+                    is_verified, auth_provider, created_at
+                )
+                SELECT
+                    id, name, phone, email, password_hash, salt, role, language, state, district,
+                    is_verified, auth_provider, created_at
+                FROM users;
+            """)
+            cursor.execute("DROP TABLE users;")
+            cursor.execute("ALTER TABLE users_migration RENAME TO users;")
+            cursor.execute("PRAGMA foreign_keys = ON;")
+
+        # Automated Data Cleansing: Cleanse any legacy placeholder phones (e.g. g_..., a_..., sub_...)
+        # Google authentication identifiers (sub, id) or arbitrary strings must NEVER be stored as mobile numbers.
+        cursor.execute("""
+            UPDATE users 
+            SET phone = NULL 
+            WHERE phone LIKE 'g_%' 
+               OR phone LIKE 'a_%' 
+               OR phone LIKE 'sub_%'
+               OR (phone IS NOT NULL AND (length(phone) != 10 OR phone NOT GLOB '[0-9]*'));
+        """)
+
+        # Migration: Add any missing profile columns to existing database
+        cursor.execute("PRAGMA table_info(users);")
+        col_names = [row["name"] for row in cursor.fetchall()]
+        for col, col_type in [
+            ("is_verified", "INTEGER DEFAULT 0"),
+            ("auth_provider", "TEXT DEFAULT 'local'"),
+            ("dob", "TEXT"),
+            ("gender", "TEXT"),
+            ("address", "TEXT"),
+            ("city", "TEXT"),
+            ("pin_code", "TEXT"),
+            ("avatar_url", "TEXT"),
+        ]:
+            if col not in col_names:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type};")
         
         # Create an index on phone for fast lookups
         cursor.execute("""

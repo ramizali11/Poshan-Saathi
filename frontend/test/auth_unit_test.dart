@@ -65,6 +65,40 @@ void main() {
       expect(UserSession.instance.displayName, 'Kavita R. Patel');
       expect(notifyCount, 2);
     });
+
+    test('Google placeholder identifiers like g_100435695197 are sanitized to null', () {
+      final jsonWithGoogleId = {
+        'id': 77,
+        'name': 'Google Caregiver',
+        'phone': 'g_100435695197',
+        'email': 'caregiver@gmail.com',
+        'role': 'parent',
+        'auth_provider': 'google',
+      };
+
+      final user = UserModel.fromJson(jsonWithGoogleId);
+      expect(user.phone, isNull, reason: 'Generated g_ identifiers must never be stored as phone numbers');
+      expect(user.name, 'Google Caregiver');
+      expect(user.email, 'caregiver@gmail.com');
+
+      UserSession.instance.setUser(user);
+      expect(UserSession.instance.displayPhone, 'Not added');
+    });
+
+    test('Valid 10-digit mobile numbers are accepted and preserved', () {
+      final jsonWithValidPhone = {
+        'id': 88,
+        'name': 'Meera Patel',
+        'phone': '9876543210',
+        'email': 'meera@gmail.com',
+      };
+
+      final user = UserModel.fromJson(jsonWithValidPhone);
+      expect(user.phone, '9876543210');
+
+      UserSession.instance.setUser(user);
+      expect(UserSession.instance.displayPhone, '9876543210');
+    });
   });
 }
 

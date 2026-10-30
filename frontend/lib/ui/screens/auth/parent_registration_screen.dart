@@ -12,19 +12,29 @@ class ParentRegistrationScreen extends StatefulWidget {
 }
 
 class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
-  final _nameController = TextEditingController(text: 'Priya Shah');
-  final _phoneController = TextEditingController(text: '98765 43210');
-  final _emailController = TextEditingController(text: 'priya.shah@example.com');
-  final _passwordController = TextEditingController(text: 'PriyaCare@2026');
-  final _confirmPasswordController = TextEditingController(text: 'PriyaCare@2026');
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   String _selectedLanguage = 'ગુજરાતી (Gujarati)';
   String _selectedState = 'Gujarat (ગુજરાત)';
   String _selectedDistrict = 'Ahmedabad (અમદાવાદ)';
-  bool _consentAgreed = true;
+  bool _consentAgreed = false;
   bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleRegister() async {
     final name = _nameController.text.trim();
@@ -42,6 +52,14 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
     if (phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter your mobile number.')),
+      );
+      return;
+    }
+
+    final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    if (phone.startsWith('g_') || phone.startsWith('a_') || cleanPhone.length != 10 || !RegExp(r'^[6-9]\d{9}$').hasMatch(cleanPhone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.')),
       );
       return;
     }

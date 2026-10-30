@@ -33,9 +33,21 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        final initials = (user?.name.trim().isNotEmpty == true)
-            ? user!.name.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
-            : 'PS';
+        final userName = user?.name.trim() ?? '';
+        final initials = userName.isNotEmpty
+            ? userName.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
+            : 'U';
+        final avatarUrl = user?.avatarUrl?.trim();
+        final hasAvatar = avatarUrl != null && avatarUrl.startsWith('http');
+        final phone = UserModel.sanitizePhone(user?.phone);
+        final email = user?.email?.trim();
+        final dob = user?.dob?.trim();
+        final address = user?.address?.trim();
+        final city = user?.city?.trim();
+        final state = user?.state?.trim();
+        final district = user?.district?.trim();
+        final pinCode = user?.pinCode?.trim();
+
         return Container(
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -61,15 +73,18 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 children: [
                   CircleAvatar(
                     radius: 28,
-                    backgroundColor: AppColors.primary,
-                    child: Text(
-                      initials,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
+                    backgroundColor: AppColors.primaryContainer,
+                    backgroundImage: hasAvatar ? NetworkImage(avatarUrl) : null,
+                    child: !hasAvatar
+                        ? Text(
+                            initials,
+                            style: const TextStyle(
+                              color: AppColors.primaryDark,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          )
+                        : null,
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -77,7 +92,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          user?.name ?? 'Caregiver',
+                          userName.isNotEmpty ? userName : 'Caregiver',
                           style: AppTypography.headline3.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 2),
@@ -86,13 +101,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: AppColors.primaryContainer,
+                                color: user?.authProvider == 'google'
+                                    ? AppColors.statusBlueContainer
+                                    : AppColors.primaryContainer,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                (user?.role ?? 'Parent').toUpperCase(),
+                                user?.authProvider == 'google' ? 'GOOGLE ACCOUNT' : (user?.role ?? 'Parent').toUpperCase(),
                                 style: AppTypography.labelSmall.copyWith(
-                                  color: AppColors.primaryDark,
+                                  color: user?.authProvider == 'google' ? AppColors.statusBlue : AppColors.primaryDark,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 10,
                                 ),
@@ -126,25 +143,49 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
               _buildProfileDetailRow(
                 icon: Icons.phone_android_rounded,
                 label: 'Mobile Number (મોબાઇલ)',
-                value: '+91 ${user?.phone.isNotEmpty == true ? user!.phone : "9876543210"}',
+                value: (phone != null && phone.isNotEmpty)
+                    ? '+91 $phone'
+                    : 'Not added',
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
                 icon: Icons.mail_outline_rounded,
                 label: 'Email (ઇમેઇલ)',
-                value: user?.email?.isNotEmpty == true ? user!.email! : 'Not provided',
+                value: (email != null && email.isNotEmpty)
+                    ? email
+                    : 'Not added',
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
-                icon: Icons.language_rounded,
-                label: 'Language (ભાષા)',
-                value: user?.language ?? 'ગુજરાતી (Gujarati)',
+                icon: Icons.cake_outlined,
+                label: 'Date of Birth (જન્મ તારીખ)',
+                value: (dob != null && dob.isNotEmpty)
+                    ? dob
+                    : 'Not added',
+              ),
+              const SizedBox(height: 12),
+              _buildProfileDetailRow(
+                icon: Icons.home_outlined,
+                label: 'Residential Address (સરનામું)',
+                value: (address != null && address.isNotEmpty)
+                    ? '$address${city != null && city.isNotEmpty ? ", $city" : ""}'
+                    : 'Not added',
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
                 icon: Icons.location_on_outlined,
                 label: 'District & State (જિલ્લો અને રાજ્ય)',
-                value: '${user?.district ?? "Ahmedabad (અમદાવાદ)"}, ${user?.state ?? "Gujarat (ગુજરાત)"}',
+                value: (district != null || state != null)
+                    ? '${district ?? ""}${district != null && state != null ? ", " : ""}${state ?? ""}'
+                    : 'Not added',
+              ),
+              const SizedBox(height: 12),
+              _buildProfileDetailRow(
+                icon: Icons.pin_drop_outlined,
+                label: 'PIN Code (પિન કોડ)',
+                value: (pinCode != null && pinCode.isNotEmpty)
+                    ? pinCode
+                    : 'Not added',
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -152,7 +193,24 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 label: 'Database Record ID',
                 value: '#${user?.id ?? 1} (Saved in poshan_saathi.db)',
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+
+              // Edit Profile Button
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.pushNamed(context, '/edit_profile');
+                },
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Edit Profile Details (પ્રોફાઇલ બદલો)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+              const SizedBox(height: 12),
+
               Row(
                 children: [
                   Expanded(
@@ -172,7 +230,9 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                         backgroundColor: AppColors.statusRed,
                         foregroundColor: Colors.white,
                       ),
-                      onPressed: () {
+                      onPressed: () async {
+                        await UserSession.instance.clearUser();
+                        if (!ctx.mounted) return;
                         Navigator.pop(ctx);
                         Navigator.pushReplacementNamed(context, '/login');
                       },
@@ -345,7 +405,8 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                       : 'Caregiver';
                   final initials = caregiverName.trim().isNotEmpty
                       ? caregiverName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
-                      : 'PS';
+                      : 'U';
+                  final hasAvatar = currentUser?.avatarUrl != null && currentUser!.avatarUrl!.startsWith('http');
 
                   return Container(
                     padding: const EdgeInsets.all(16),
@@ -391,14 +452,17 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                               child: CircleAvatar(
                                 radius: 20,
                                 backgroundColor: AppColors.primaryContainer,
-                                child: Text(
-                                  initials,
-                                  style: const TextStyle(
-                                    color: AppColors.primaryDark,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
+                                backgroundImage: hasAvatar ? NetworkImage(currentUser!.avatarUrl!) : null,
+                                child: !hasAvatar
+                                    ? Text(
+                                        initials,
+                                        style: const TextStyle(
+                                          color: AppColors.primaryDark,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      )
+                                    : null,
                               ),
                             ),
                           ),

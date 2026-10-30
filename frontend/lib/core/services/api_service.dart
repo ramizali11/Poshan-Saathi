@@ -348,26 +348,10 @@ class ApiService {
         return AuthResult(success: false, message: errorMsg);
       }
     } catch (e) {
-      debugPrint('ℹ️ Backend unreachable during login: $e. Falling back to local caregiver session.');
-
-      final fallbackUser = UserModel(
-        id: 1,
-        name: 'Priya Shah',
-        phone: identifier.replaceAll(' ', '').trim(),
-        email: identifier.contains('@') ? identifier.trim() : 'priya.shah@example.com',
-        role: 'parent',
-        language: 'ગુજરાતી (Gujarati)',
-        state: 'Gujarat (ગુજરાત)',
-        district: 'Ahmedabad (અમદાવાદ)',
-        isVerified: true,
-      );
-      UserSession.instance.setUser(fallbackUser);
-
+      debugPrint('ℹ️ Backend unreachable during login: $e.');
       return AuthResult(
-        success: true,
-        message: 'Logged in locally (Backend server offline).',
-        user: fallbackUser,
-        isOfflineFallback: true,
+        success: false,
+        message: _classifyNetworkError(e),
       );
     } finally {
       client.close(force: true);
@@ -473,12 +457,13 @@ class ApiService {
   }
 
   /// Authenticates using a verified Google ID Token
+  /// Authenticates using a verified Google ID Token
   Future<AuthResult> loginWithGoogle({
     required String idToken,
     String role = 'parent',
-    String language = 'ગુજરાતી (Gujarati)',
-    String state = 'Gujarat (ગુજરાત)',
-    String district = 'Ahmedabad (અમદાવાદ)',
+    String? language,
+    String? state,
+    String? district,
   }) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
 
@@ -492,9 +477,9 @@ class ApiService {
       final payload = jsonEncode({
         'id_token': idToken.trim(),
         'role': role,
-        'language': language,
-        'state': state,
-        'district': district,
+        if (language != null) 'language': language,
+        if (state != null) 'state': state,
+        if (district != null) 'district': district,
       });
 
       request.write(payload);
@@ -507,7 +492,7 @@ class ApiService {
         final token = data['token'] as String?;
         final user = UserModel.fromJson(userData, token: token);
 
-        UserSession.instance.setUser(user);
+        await UserSession.instance.setUser(user);
 
         return AuthResult(
           success: true,
@@ -538,9 +523,9 @@ class ApiService {
     String? lastName,
     String? email,
     String role = 'parent',
-    String language = 'ગુજરાતી (Gujarati)',
-    String state = 'Gujarat (ગુજરાત)',
-    String district = 'Ahmedabad (અમદાવાદ)',
+    String? language,
+    String? state,
+    String? district,
   }) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
 
@@ -558,9 +543,9 @@ class ApiService {
         if (lastName != null && lastName.isNotEmpty) 'last_name': lastName.trim(),
         if (email != null && email.isNotEmpty) 'email': email.trim().toLowerCase(),
         'role': role,
-        'language': language,
-        'state': state,
-        'district': district,
+        if (language != null) 'language': language,
+        if (state != null) 'state': state,
+        if (district != null) 'district': district,
       });
 
       request.write(payload);
@@ -573,7 +558,7 @@ class ApiService {
         final token = data['token'] as String?;
         final user = UserModel.fromJson(userData, token: token);
 
-        UserSession.instance.setUser(user);
+        await UserSession.instance.setUser(user);
 
         return AuthResult(
           success: true,
@@ -594,5 +579,109 @@ class ApiService {
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// Updates authenticated user profile details via PUT /api/auth/profile
+  Future<AuthResult> updateProfile({
+    String? name,
+    String? phone,
+    String? dob,
+    String? gender,
+    String? address,
+    String? city,
+    String? state,
+    String? district,
+    String? pinCode,
+    String? avatarUrl,
+    String? language,
+  }) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+
+    try {
+      final token = UserSession.instance.currentToken;
+      if (token == null || token.isEmpty) {
+        return const AuthResult(
+          success: false,
+          message: 'Session token not found. Please log in again.',
+        );
+      }
+
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/auth/profile');
+
+      final request = await client.putUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{};
+      if (name != null) body['name'] = name.trim();
+      if (phone != null) body['phone'] = phone.replaceAll(' ', '').trim();
+      if (dob != null) body['dob'] = dob.trim();
+      if (gender != null) body['gender'] = gender.trim();
+      if (address != null) body['address'] = address.trim();
+      if (city != null) body['city'] = city.trim();
+      if (state != null) body['state'] = state.trim();
+      if (district != null) body['district'] = district.trim();
+      if (pinCode != null) body['pin_code'] = pinCode.trim();
+      if (avatarUrl != null) body['avatar_url'] = avatarUrl.trim();
+      if (language != null) body['language'] = language.trim();
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(responseBody) as Map<String, dynamic>;
+
+      if (response.statusCode == 200) {
+        final updatedUser = UserModel.fromJson(data, token: token);
+        await UserSession.instance.setUser(updatedUser);
+
+        return AuthResult(
+          success: true,
+          message: 'Profile updated successfully!',
+          user: updatedUser,
+          token: token,
+        );
+      } else {
+        final errorMsg = data['detail'] as String? ?? 'Failed to update profile.';
+        return AuthResult(success: false, message: errorMsg);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Network error during profile update: $e');
+      return AuthResult(
+        success: false,
+        message: _classifyNetworkError(e),
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Refreshes the currently authenticated user details from GET /api/auth/me
+  Future<UserModel?> fetchCurrentUser() async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/auth/me');
+
+      final request = await client.getUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 25));
+      if (response.statusCode == 200) {
+        final responseBody = await response.transform(utf8.decoder).join();
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        final user = UserModel.fromJson(data, token: token);
+        await UserSession.instance.setUser(user);
+        return user;
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not refresh user profile from backend: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return UserSession.instance.currentUser;
   }
 }

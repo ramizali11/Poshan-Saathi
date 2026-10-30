@@ -32,9 +32,9 @@ class ResetPasswordRequest(BaseModel):
 class GoogleAuthRequest(BaseModel):
     id_token: str = Field(..., min_length=10, description="Google ID Token (JWT) obtained from Google Sign-In SDK")
     role: Optional[str] = Field("parent", description="User role: parent or clinician")
-    language: Optional[str] = Field("ગુજરાતી (Gujarati)", description="Preferred language")
-    state: Optional[str] = Field("Gujarat (ગુજરાત)", description="State")
-    district: Optional[str] = Field("Ahmedabad (અમદાવાદ)", description="District")
+    language: Optional[str] = Field(None, description="Preferred language")
+    state: Optional[str] = Field(None, description="State")
+    district: Optional[str] = Field(None, description="District")
 
 class AppleAuthRequest(BaseModel):
     identity_token: str = Field(..., min_length=10, description="Apple Identity Token (JWT) from Apple Sign-In")
@@ -43,9 +43,22 @@ class AppleAuthRequest(BaseModel):
     last_name: Optional[str] = Field(None, description="Family name (sent only on first login)")
     email: Optional[str] = Field(None, description="Email address (sent only on first login or private relay)")
     role: Optional[str] = Field("parent", description="User role: parent or clinician")
-    language: Optional[str] = Field("ગુજરાતી (Gujarati)", description="Preferred language")
-    state: Optional[str] = Field("Gujarat (ગુજરાત)", description="State")
-    district: Optional[str] = Field("Ahmedabad (અમદાવાદ)", description="District")
+    language: Optional[str] = Field(None, description="Preferred language")
+    state: Optional[str] = Field(None, description="State")
+    district: Optional[str] = Field(None, description="District")
+
+class UpdateProfileRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="Full Name")
+    phone: Optional[str] = Field(None, description="10-digit mobile number")
+    dob: Optional[str] = Field(None, description="Date of birth (YYYY-MM-DD)")
+    gender: Optional[str] = Field(None, description="Gender (Female, Male, Other)")
+    address: Optional[str] = Field(None, max_length=250, description="Residential Address")
+    city: Optional[str] = Field(None, max_length=100, description="City / Town")
+    state: Optional[str] = Field(None, max_length=100, description="State")
+    district: Optional[str] = Field(None, max_length=100, description="District")
+    pin_code: Optional[str] = Field(None, description="Postal PIN Code (6 digits)")
+    avatar_url: Optional[str] = Field(None, description="Profile picture URL")
+    language: Optional[str] = Field(None, description="Preferred language")
 
 class GenericMessageResponse(BaseModel):
     success: bool
@@ -54,12 +67,19 @@ class GenericMessageResponse(BaseModel):
 class UserResponse(BaseModel):
     id: int
     name: str
-    phone: str
+    phone: Optional[str] = None
     email: Optional[str] = None
     role: str = "parent"
-    language: str = "ગુજરાતી (Gujarati)"
-    state: str = "Gujarat (ગુજરાત)"
-    district: str = "Ahmedabad (અમદાવાદ)"
+    language: Optional[str] = None
+    state: Optional[str] = None
+    district: Optional[str] = None
+    dob: Optional[str] = None
+    gender: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    pin_code: Optional[str] = None
+    avatar_url: Optional[str] = None
+    auth_provider: Optional[str] = "local"
     is_verified: bool = False
     created_at: str
 
