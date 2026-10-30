@@ -20,7 +20,7 @@ from ..security import (
     hash_reset_token,
 )
 from ..email_service import send_otp_email, send_password_reset_email, mask_email
-from ..oauth_service import verify_google_id_token, verify_apple_identity_token
+from ..oauth_service import verify_google_id_token
 from ..schemas import (
     UserRegisterRequest,
     UserLoginRequest,
@@ -29,7 +29,6 @@ from ..schemas import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
     GoogleAuthRequest,
-    AppleAuthRequest,
     UpdateProfileRequest,
     GenericMessageResponse,
     UserResponse,
@@ -1364,137 +1363,6 @@ def google_auth(req: GoogleAuthRequest):
                 pin_code=user_row["pin_code"],
                 avatar_url=user_row["avatar_url"],
                 auth_provider=user_row["auth_provider"] or "google",
-                is_verified=True,
-                is_profile_complete=bool(user_row["is_profile_complete"]),
-                onboarding_step=int(user_row["onboarding_step"] or 0),
-                created_at=user_row["created_at"]
-            ),
-            requires_verification=False,
-            email=user_row["email"]
-        )
-
-@router.post("/apple", response_model=AuthResponse)
-def apple_auth(req: AppleAuthRequest):
-    """
-    Authenticates or registers a caregiver via verified Apple Identity Token.
-    1. Cryptographically verifies Apple JWT signature with Apple's JWKS.
-    2. Handles Apple private relay email addresses and missing names on subsequent logins.
-    3. Maps or safely links to user account in oauth_accounts.
-    4. Issues standard application session token.
-    """
-    try:
-        apple_user = verify_apple_identity_token(req.identity_token)
-    except ValueError as ve:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Apple authentication failed: {str(ve)}"
-        )
-
-    sub = apple_user["sub"]
-    # Email from token claims takes priority; fallback to request payload (sent on first authorization)
-    email = apple_user.get("email") or (req.email.strip().lower() if req.email else None)
-
-    # Compute full name if provided on first authorization
-    first_name = (req.first_name or "").strip()
-    last_name = (req.last_name or "").strip()
-    full_name = f"{first_name} {last_name}".strip()
-    if not full_name:
-        full_name = "Apple User"
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-
-        # Step 1: Check oauth_accounts for existing Apple mapping
-        cursor.execute("""
-            SELECT user_id FROM oauth_accounts
-            WHERE provider = 'apple' AND provider_user_id = ?
-        """, (sub,))
-        oauth_row = cursor.fetchone()
-
-        user_id = None
-        if oauth_row:
-            user_id = oauth_row["user_id"]
-        elif email:
-            # Step 2: Check if an existing account shares this email
-            cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
-            existing_user = cursor.fetchone()
-            if existing_user:
-                user_id = existing_user["id"]
-                now_str = datetime.now(timezone.utc).isoformat()
-                cursor.execute("""
-                    INSERT OR IGNORE INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
-                    VALUES (?, 'apple', ?, ?, ?)
-                """, (user_id, sub, email, now_str))
-                cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
-                conn.commit()
-
-        # Step 3: Create new user if not found with NULL phone
-        if not user_id:
-            now = datetime.now(timezone.utc)
-            created_at = now.isoformat()
-
-            cursor.execute("""
-                INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district,
-                                  dob, gender, address, city, pin_code, avatar_url, is_verified, auth_provider,
-                                  is_profile_complete, onboarding_step, created_at)
-                VALUES (?, NULL, ?, 'OAUTH_APPLE', 'OAUTH_SALT', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'apple', 0, 0, ?)
-            """, (
-                full_name,
-                email,
-                req.role or "parent",
-                req.language or "ગુજરાતી (Gujarati)",
-                req.state,
-                req.district,
-                created_at
-            ))
-            user_id = cursor.lastrowid
-
-            cursor.execute("""
-                INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
-                VALUES (?, 'apple', ?, ?, ?)
-            """, (user_id, sub, email, created_at))
-            conn.commit()
-
-        # Step 4: Fetch user record and return standard session token
-        cursor.execute("""
-            SELECT id, name, phone, email, role, language, state, district,
-                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
-                   is_profile_complete, onboarding_step, created_at
-            FROM users WHERE id = ?
-        """, (user_id,))
-        user_row = cursor.fetchone()
-        if not user_row:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not load authenticated user profile."
-            )
-
-        safe_phone = sanitize_phone_value(user_row["phone"])
-        if user_row["phone"] and not safe_phone:
-            cursor.execute("UPDATE users SET phone = NULL WHERE id = ?", (user_id,))
-            conn.commit()
-
-        token = generate_token(user_row["id"], safe_phone)
-        return AuthResponse(
-            success=True,
-            message="Apple Sign-In successful.",
-            token=token,
-            user=UserResponse(
-                id=user_row["id"],
-                name=user_row["name"],
-                phone=safe_phone,
-                email=user_row["email"],
-                role=user_row["role"] or "parent",
-                language=user_row["language"] or "ગુજરાતી (Gujarati)",
-                state=user_row["state"],
-                district=user_row["district"],
-                dob=user_row["dob"],
-                gender=user_row["gender"],
-                address=user_row["address"],
-                city=user_row["city"],
-                pin_code=user_row["pin_code"],
-                avatar_url=user_row["avatar_url"],
-                auth_provider=user_row["auth_provider"] or "apple",
                 is_verified=True,
                 is_profile_complete=bool(user_row["is_profile_complete"]),
                 onboarding_step=int(user_row["onboarding_step"] or 0),

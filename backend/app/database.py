@@ -150,7 +150,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         """)
 
-        # Create oauth_accounts table for social login (Google, Apple)
+        # Create oauth_accounts table for social login (Google)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS oauth_accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

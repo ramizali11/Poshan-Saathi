@@ -36,17 +36,6 @@ class GoogleAuthRequest(BaseModel):
     state: Optional[str] = Field(None, description="State")
     district: Optional[str] = Field(None, description="District")
 
-class AppleAuthRequest(BaseModel):
-    identity_token: str = Field(..., min_length=10, description="Apple Identity Token (JWT) from Apple Sign-In")
-    authorization_code: Optional[str] = Field(None, description="Apple authorization code")
-    first_name: Optional[str] = Field(None, description="Given name (sent only on first login)")
-    last_name: Optional[str] = Field(None, description="Family name (sent only on first login)")
-    email: Optional[str] = Field(None, description="Email address (sent only on first login or private relay)")
-    role: Optional[str] = Field("parent", description="User role: parent or clinician")
-    language: Optional[str] = Field(None, description="Preferred language")
-    state: Optional[str] = Field(None, description="State")
-    district: Optional[str] = Field(None, description="District")
-
 class UpdateProfileRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100, description="Full Name")
     phone: Optional[str] = Field(None, description="10-digit mobile number")

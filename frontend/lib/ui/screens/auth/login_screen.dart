@@ -267,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Social Sign-In: Google & Apple
+              // Social Sign-In: Google
               SocialAuthButtons(
                 isRegistration: false,
                 onAuthSuccess: () {

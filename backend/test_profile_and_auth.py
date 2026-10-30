@@ -582,5 +582,48 @@ class TestAuthAndProfile(unittest.TestCase):
 
         print("[OK] Test 14: Strict parent-child data isolation verified.")
 
+    def test_15_health_endpoint_and_keepalive_lifespan(self):
+        """Tests /health endpoint response and validates lifespan background task configuration."""
+        import inspect
+        from app.main import health, app, keep_alive_task
+
+        # 1. Health check returns status ok
+        res = health()
+        self.assertEqual(res, {"status": "ok"})
+
+        # 2. Verify keep_alive_task is an asynchronous coroutine function
+        self.assertTrue(inspect.iscoroutinefunction(keep_alive_task), "keep_alive_task must be an async coroutine function")
+
+        # 3. Verify app has lifespan context configured
+        self.assertIsNotNone(app.router.lifespan_context, "FastAPI app must have lifespan context configured")
+
+        # 4. Verify keep_alive_task generates a valid coroutine
+        coro = keep_alive_task()
+        self.assertTrue(inspect.iscoroutine(coro))
+        coro.close()
+
+        print("[OK] Test 15: /health endpoint and keepalive background task lifespan verified.")
+
+    def test_16_apple_auth_completely_removed(self):
+        """Verifies Apple route does not exist in FastAPI route table and schemas."""
+        from app.main import app
+        import app.schemas as schemas
+        import app.oauth_service as oauth_service
+
+        # 1. No /apple route in app routes
+        route_paths = [getattr(route, "path", "") for route in app.routes if hasattr(route, "path")]
+        self.assertNotIn("/api/auth/apple", route_paths)
+        self.assertNotIn("/auth/apple", route_paths)
+
+        # 2. No AppleAuthRequest schema
+        self.assertFalse(hasattr(schemas, "AppleAuthRequest"), "AppleAuthRequest must not exist in schemas")
+
+        # 3. No Apple functions in oauth_service
+        self.assertFalse(hasattr(oauth_service, "verify_apple_identity_token"), "verify_apple_identity_token must not exist")
+        self.assertFalse(hasattr(oauth_service, "get_apple_public_keys"), "get_apple_public_keys must not exist")
+        self.assertFalse(hasattr(oauth_service, "APPLE_CLIENT_ID"), "APPLE_CLIENT_ID must not exist")
+
+        print("[OK] Test 16: Apple Sign-In routes, functions, and schemas completely removed.")
+
 if __name__ == "__main__":
     unittest.main()
