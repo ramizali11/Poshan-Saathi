@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/user_session.dart';
 import '../../../core/widgets/social_auth_buttons.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -61,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
           duration: const Duration(seconds: 2),
         ),
       );
-      Navigator.pushReplacementNamed(context, '/dashboard');
+      _navigateAfterAuth();
     } else if (result.isUnverified) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -84,6 +85,19 @@ class _LoginScreenState extends State<LoginScreen> {
           backgroundColor: AppColors.statusRed,
         ),
       );
+    }
+  }
+
+  void _navigateAfterAuth() {
+    final user = UserSession.instance.currentUser;
+    if (user != null && !user.isProfileComplete) {
+      if (user.onboardingStep == 1) {
+        Navigator.pushNamedAndRemoveUntil(context, '/google_onboarding_step2', (route) => false);
+      } else {
+        Navigator.pushNamedAndRemoveUntil(context, '/google_onboarding_step1', (route) => false);
+      }
+    } else {
+      Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
     }
   }
 
@@ -264,7 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       duration: Duration(seconds: 2),
                     ),
                   );
-                  Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
+                  _navigateAfterAuth();
                 },
                 onAuthError: (error) {
                   ScaffoldMessenger.of(context).showSnackBar(

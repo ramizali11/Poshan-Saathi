@@ -39,9 +39,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include Auth Router under both /api and root prefix to support both /api/auth/... and /auth/...
+# Include Routers under both /api and root prefix to support all path conventions
 app.include_router(auth.router, prefix="/api")
 app.include_router(auth.router, prefix="")
+app.include_router(auth.onboarding_router, prefix="/api")
+app.include_router(auth.onboarding_router, prefix="")
+app.include_router(auth.children_router, prefix="/api")
+app.include_router(auth.children_router, prefix="")
 
 @app.get("/")
 def root():

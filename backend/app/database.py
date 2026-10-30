@@ -55,6 +55,8 @@ def init_db():
                 avatar_url TEXT,
                 is_verified INTEGER DEFAULT 0,
                 auth_provider TEXT DEFAULT 'local',
+                is_profile_complete INTEGER DEFAULT 0,
+                onboarding_step INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL
             );
         """)
@@ -125,9 +127,18 @@ def init_db():
             ("city", "TEXT"),
             ("pin_code", "TEXT"),
             ("avatar_url", "TEXT"),
+            ("is_profile_complete", "INTEGER DEFAULT 0"),
+            ("onboarding_step", "INTEGER DEFAULT 0"),
         ]:
             if col not in col_names:
                 cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type};")
+
+        # Automatically mark existing local users as profile complete so traditional auth is uninterrupted
+        cursor.execute("""
+            UPDATE users
+            SET is_profile_complete = 1, onboarding_step = 2
+            WHERE auth_provider = 'local' AND (is_profile_complete IS NULL OR is_profile_complete = 0);
+        """)
         
         # Create an index on phone for fast lookups
         cursor.execute("""
@@ -217,6 +228,24 @@ def init_db():
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+        """)
+
+        # Create children table for parent onboarding and child tracking
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS children (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                parent_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                dob TEXT NOT NULL,
+                weight REAL,
+                gender TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_children_parent_id ON children(parent_id);
         """)
         
         conn.commit()

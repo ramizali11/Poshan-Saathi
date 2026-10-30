@@ -34,10 +34,16 @@ from ..schemas import (
     GenericMessageResponse,
     UserResponse,
     AuthResponse,
+    OnboardingStep1Request,
+    ChildCreateRequest,
+    ChildrenBatchCreateRequest,
+    ChildResponse,
 )
 
 logger = logging.getLogger("poshan_saathi.auth")
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+onboarding_router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
+children_router = APIRouter(prefix="/children", tags=["Children"])
 
 def clean_phone(phone: str) -> str:
     """Removes all non-digit characters and strips +91 country code if present."""
@@ -118,10 +124,10 @@ def register(req: UserRegisterRequest):
         now = datetime.now(timezone.utc)
         created_at = now.isoformat()
 
-        # Insert new user into SQLite with is_verified = 0
+        # Insert new user into SQLite with is_verified = 0, and profile marked complete for standard email registration
         cursor.execute("""
-            INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district, is_verified, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+            INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district, is_verified, is_profile_complete, onboarding_step, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 2, ?)
         """, (
             req.name.strip(),
             norm_phone,
@@ -166,6 +172,8 @@ def register(req: UserRegisterRequest):
             state=req.state or "Gujarat (ગુજરાત)",
             district=req.district or "Ahmedabad (અમદાવાદ)",
             is_verified=False,
+            is_profile_complete=True,
+            onboarding_step=2,
             created_at=created_at
         )
 
@@ -203,7 +211,7 @@ def verify_otp_endpoint(req: VerifyOtpRequest):
 
         # Find user record
         cursor.execute("""
-            SELECT id, name, phone, email, role, language, state, district, is_verified, created_at
+            SELECT id, name, phone, email, role, language, state, district, is_verified, is_profile_complete, onboarding_step, created_at
             FROM users
             WHERE email = ?
         """, (norm_email,))
@@ -232,6 +240,8 @@ def verify_otp_endpoint(req: VerifyOtpRequest):
                     state=user_row["state"] or "Gujarat (ગુજરાત)",
                     district=user_row["district"] or "Ahmedabad (અમદાવાદ)",
                     is_verified=True,
+                    is_profile_complete=bool(user_row["is_profile_complete"]),
+                    onboarding_step=int(user_row["onboarding_step"] or 0),
                     created_at=user_row["created_at"]
                 ),
                 requires_verification=False,
@@ -311,6 +321,8 @@ def verify_otp_endpoint(req: VerifyOtpRequest):
             state=user_row["state"] or "Gujarat (ગુજરાત)",
             district=user_row["district"] or "Ahmedabad (અમદાવાદ)",
             is_verified=True,
+            is_profile_complete=bool(user_row["is_profile_complete"]),
+            onboarding_step=int(user_row["onboarding_step"] or 0),
             created_at=user_row["created_at"]
         )
 
@@ -419,7 +431,8 @@ def login(req: UserLoginRequest):
         # Query user by phone or email
         cursor.execute("""
             SELECT id, name, phone, email, password_hash, salt, role, language, state, district,
-                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
+                   is_profile_complete, onboarding_step, created_at
             FROM users
             WHERE phone = ? OR email = ?
         """, (norm_phone, norm_email))
@@ -470,6 +483,8 @@ def login(req: UserLoginRequest):
             avatar_url=row["avatar_url"],
             auth_provider=row["auth_provider"] or "local",
             is_verified=bool(row["is_verified"]),
+            is_profile_complete=bool(row["is_profile_complete"]),
+            onboarding_step=int(row["onboarding_step"] or 0),
             created_at=row["created_at"]
         )
 
@@ -969,7 +984,8 @@ def get_current_user(
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, name, phone, email, role, language, state, district,
-                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
+                   is_profile_complete, onboarding_step, created_at
             FROM users
             WHERE id = ?
         """, (uid,))
@@ -1003,6 +1019,8 @@ def get_current_user(
             avatar_url=row["avatar_url"],
             auth_provider=row["auth_provider"] or "local",
             is_verified=bool(row["is_verified"]),
+            is_profile_complete=bool(row["is_profile_complete"]),
+            onboarding_step=int(row["onboarding_step"] or 0),
             created_at=row["created_at"]
         )
 
@@ -1145,7 +1163,8 @@ def update_profile(
         # Fetch updated record
         cursor.execute("""
             SELECT id, name, phone, email, role, language, state, district,
-                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
+                   is_profile_complete, onboarding_step, created_at
             FROM users WHERE id = ?
         """, (user_id,))
         row = cursor.fetchone()
@@ -1167,6 +1186,8 @@ def update_profile(
             avatar_url=row["avatar_url"],
             auth_provider=row["auth_provider"] or "local",
             is_verified=bool(row["is_verified"]),
+            is_profile_complete=bool(row["is_profile_complete"]),
+            onboarding_step=int(row["onboarding_step"] or 0),
             created_at=row["created_at"],
         )
 
@@ -1179,7 +1200,8 @@ def list_users():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, name, phone, email, role, language, state, district,
-                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
+                   is_profile_complete, onboarding_step, created_at
             FROM users
             ORDER BY id DESC
         """)
@@ -1202,6 +1224,8 @@ def list_users():
                 avatar_url=r["avatar_url"],
                 auth_provider=r["auth_provider"] or "local",
                 is_verified=bool(r["is_verified"]),
+                is_profile_complete=bool(r["is_profile_complete"]),
+                onboarding_step=int(r["onboarding_step"] or 0),
                 created_at=r["created_at"]
             )
             for r in rows
@@ -1279,8 +1303,9 @@ def google_auth(req: GoogleAuthRequest):
 
             cursor.execute("""
                 INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district,
-                                  dob, gender, address, city, pin_code, avatar_url, is_verified, auth_provider, created_at)
-                VALUES (?, NULL, ?, 'OAUTH_GOOGLE', 'OAUTH_SALT', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, 1, 'google', ?)
+                                  dob, gender, address, city, pin_code, avatar_url, is_verified, auth_provider,
+                                  is_profile_complete, onboarding_step, created_at)
+                VALUES (?, NULL, ?, 'OAUTH_GOOGLE', 'OAUTH_SALT', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, 1, 'google', 0, 0, ?)
             """, (
                 name,
                 email,
@@ -1302,7 +1327,8 @@ def google_auth(req: GoogleAuthRequest):
         # Step 4: Fetch user record and return standard session token
         cursor.execute("""
             SELECT id, name, phone, email, role, language, state, district,
-                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
+                   is_profile_complete, onboarding_step, created_at
             FROM users WHERE id = ?
         """, (user_id,))
         user_row = cursor.fetchone()
@@ -1339,6 +1365,8 @@ def google_auth(req: GoogleAuthRequest):
                 avatar_url=user_row["avatar_url"],
                 auth_provider=user_row["auth_provider"] or "google",
                 is_verified=True,
+                is_profile_complete=bool(user_row["is_profile_complete"]),
+                onboarding_step=int(user_row["onboarding_step"] or 0),
                 created_at=user_row["created_at"]
             ),
             requires_verification=False,
@@ -1407,8 +1435,9 @@ def apple_auth(req: AppleAuthRequest):
 
             cursor.execute("""
                 INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district,
-                                  dob, gender, address, city, pin_code, avatar_url, is_verified, auth_provider, created_at)
-                VALUES (?, NULL, ?, 'OAUTH_APPLE', 'OAUTH_SALT', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'apple', ?)
+                                  dob, gender, address, city, pin_code, avatar_url, is_verified, auth_provider,
+                                  is_profile_complete, onboarding_step, created_at)
+                VALUES (?, NULL, ?, 'OAUTH_APPLE', 'OAUTH_SALT', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'apple', 0, 0, ?)
             """, (
                 full_name,
                 email,
@@ -1429,7 +1458,8 @@ def apple_auth(req: AppleAuthRequest):
         # Step 4: Fetch user record and return standard session token
         cursor.execute("""
             SELECT id, name, phone, email, role, language, state, district,
-                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified, created_at
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
+                   is_profile_complete, onboarding_step, created_at
             FROM users WHERE id = ?
         """, (user_id,))
         user_row = cursor.fetchone()
@@ -1466,8 +1496,389 @@ def apple_auth(req: AppleAuthRequest):
                 avatar_url=user_row["avatar_url"],
                 auth_provider=user_row["auth_provider"] or "apple",
                 is_verified=True,
+                is_profile_complete=bool(user_row["is_profile_complete"]),
+                onboarding_step=int(user_row["onboarding_step"] or 0),
                 created_at=user_row["created_at"]
             ),
             requires_verification=False,
             email=user_row["email"]
+        )
+
+# ============================================================================
+# Two-Step Onboarding & Children Management Endpoints
+# ============================================================================
+
+def get_authenticated_user_id(authorization: Optional[str]) -> int:
+    """Extracts and verifies user_id from Bearer token payload."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please provide a valid Bearer token.",
+        )
+    token = authorization.split(" ")[1]
+    payload = verify_token(token)
+    if not payload or not payload.get("uid"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token. Please log in again.",
+        )
+    return payload["uid"]
+
+@router.post("/onboarding/step-1", response_model=UserResponse)
+@router.put("/onboarding/step-1", response_model=UserResponse)
+@onboarding_router.post("/step-1", response_model=UserResponse)
+@onboarding_router.put("/step-1", response_model=UserResponse)
+def onboarding_step_1(
+    req: OnboardingStep1Request,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Step 1 of Onboarding: Updates Caregiver Profile Information.
+    - Full Name: REQUIRED (non-empty).
+    - Mobile Number: OPTIONAL (validated if provided, never saves fake IDs or placeholders).
+    - Date of Birth, Gender, Address, City, State, District, PIN code: OPTIONAL.
+    - Sets onboarding_step = 1.
+    """
+    user_id = get_authenticated_user_id(authorization)
+
+    clean_name = req.name.strip()
+    if not clean_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Full Name is required and cannot be blank.",
+        )
+
+    # Validate phone if entered
+    norm_phone = None
+    update_phone = False
+    if req.phone is not None:
+        update_phone = True
+        raw_phone = req.phone.strip()
+        if raw_phone:
+            if raw_phone.startswith(("g_", "a_", "sub_", "id_")):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid mobile number. Google/system identifiers cannot be saved as phone numbers.",
+                )
+            if not is_valid_phone(raw_phone):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Please provide a valid 10-digit Indian mobile number (e.g., 9876543210).",
+                )
+            norm_phone = clean_phone(raw_phone)
+
+    # Validate PIN code if entered
+    norm_pin = None
+    if req.pin_code is not None:
+        clean_pin = req.pin_code.strip()
+        if clean_pin:
+            if len(clean_pin) != 6 or not clean_pin.isdigit():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Please provide a valid 6-digit postal PIN code.",
+                )
+            norm_pin = clean_pin
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Verify user exists
+        cursor.execute("SELECT id, phone, email, onboarding_step FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found in database.",
+            )
+
+        # Check phone conflict if provided
+        if norm_phone:
+            cursor.execute("SELECT id FROM users WHERE phone = ? AND id != ?", (norm_phone, user_id))
+            if cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Mobile number {norm_phone} is already linked to another account.",
+                )
+
+        # Dynamic query building
+        updates = ["name = ?"]
+        params = [clean_name]
+
+        if update_phone:
+            updates.append("phone = ?")
+            params.append(norm_phone)
+
+        if req.dob is not None:
+            updates.append("dob = ?")
+            params.append(req.dob.strip() if req.dob.strip() else None)
+
+        if req.gender is not None:
+            updates.append("gender = ?")
+            params.append(req.gender.strip() if req.gender.strip() else None)
+
+        if req.address is not None:
+            updates.append("address = ?")
+            params.append(req.address.strip() if req.address.strip() else None)
+
+        if req.city is not None:
+            updates.append("city = ?")
+            params.append(req.city.strip() if req.city.strip() else None)
+
+        if req.state is not None:
+            updates.append("state = ?")
+            params.append(req.state.strip() if req.state.strip() else None)
+
+        if req.district is not None:
+            updates.append("district = ?")
+            params.append(req.district.strip() if req.district.strip() else None)
+
+        if req.pin_code is not None:
+            updates.append("pin_code = ?")
+            params.append(norm_pin)
+
+        # Progress onboarding step to at least 1
+        updates.append("onboarding_step = CASE WHEN COALESCE(onboarding_step, 0) < 1 THEN 1 ELSE onboarding_step END")
+
+        params.append(user_id)
+        cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", tuple(params))
+        conn.commit()
+
+        # Fetch updated record
+        cursor.execute("""
+            SELECT id, name, phone, email, role, language, state, district,
+                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
+                   is_profile_complete, onboarding_step, created_at
+            FROM users WHERE id = ?
+        """, (user_id,))
+        updated_row = cursor.fetchone()
+
+        return UserResponse(
+            id=updated_row["id"],
+            name=updated_row["name"],
+            phone=updated_row["phone"],
+            email=updated_row["email"],
+            role=updated_row["role"] or "parent",
+            language=updated_row["language"] or "ગુજરાતી (Gujarati)",
+            state=updated_row["state"],
+            district=updated_row["district"],
+            dob=updated_row["dob"],
+            gender=updated_row["gender"],
+            address=updated_row["address"],
+            city=updated_row["city"],
+            pin_code=updated_row["pin_code"],
+            avatar_url=updated_row["avatar_url"],
+            auth_provider=updated_row["auth_provider"] or "local",
+            is_verified=bool(updated_row["is_verified"]),
+            is_profile_complete=bool(updated_row["is_profile_complete"]),
+            onboarding_step=int(updated_row["onboarding_step"] or 1),
+            created_at=updated_row["created_at"],
+        )
+
+@router.post("/onboarding/step-2")
+@onboarding_router.post("/step-2")
+def onboarding_step_2(
+    req: ChildrenBatchCreateRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Step 2 of Onboarding: Saves Child/Children Details.
+    - Supports multiple children.
+    - Each child requires: name, dob, gender.
+    - Weight (kg) is optional numeric.
+    - Saves records linked with foreign key to authenticated parent (parent_id = uid).
+    - Marks is_profile_complete = 1, onboarding_step = 2.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    if not req.children:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one child record is required. Or choose 'Skip' to add child details later.",
+        )
+
+    # Validate all children
+    for idx, child in enumerate(req.children):
+        if not child.name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Child #{idx + 1} name is required.",
+            )
+        if not child.dob.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Child #{idx + 1} date of birth is required.",
+            )
+        clean_gender = child.gender.strip()
+        if clean_gender not in ("Boy", "Girl", "Other"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Child #{idx + 1} gender must be 'Boy', 'Girl', or 'Other'.",
+            )
+
+    created_children = []
+    now_str = datetime.now(timezone.utc).isoformat()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Insert each child
+        for child in req.children:
+            cursor.execute("""
+                INSERT INTO children (parent_id, name, dob, weight, gender, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                parent_id,
+                child.name.strip(),
+                child.dob.strip(),
+                child.weight,
+                child.gender.strip(),
+                now_str
+            ))
+            child_id = cursor.lastrowid
+
+            # Also mirror into child_profiles for backwards compatibility
+            cursor.execute("""
+                INSERT INTO child_profiles (user_id, name, dob, current_weight_kg, gender, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                parent_id,
+                child.name.strip(),
+                child.dob.strip(),
+                child.weight,
+                child.gender.strip(),
+                now_str
+            ))
+
+            created_children.append(
+                ChildResponse(
+                    id=child_id,
+                    parent_id=parent_id,
+                    name=child.name.strip(),
+                    dob=child.dob.strip(),
+                    weight=child.weight,
+                    gender=child.gender.strip(),
+                    created_at=now_str
+                )
+            )
+
+        # Mark user as profile complete and onboarding step 2 complete
+        cursor.execute("""
+            UPDATE users
+            SET is_profile_complete = 1, onboarding_step = 2
+            WHERE id = ?
+        """, (parent_id,))
+        conn.commit()
+
+    return {
+        "success": True,
+        "message": f"Successfully registered {len(created_children)} child profile(s). Profile onboarding is complete!",
+        "children": [c.model_dump() for c in created_children],
+    }
+
+@router.post("/onboarding/skip-step-2")
+@onboarding_router.post("/skip-step-2")
+def skip_onboarding_step_2(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Allows parent to skip Step 2 ("Add Later").
+    Marks is_profile_complete = 1, onboarding_step = 2 so the user is not prompted again on subsequent logins.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET is_profile_complete = 1, onboarding_step = 2
+            WHERE id = ?
+        """, (parent_id,))
+        conn.commit()
+
+    return {
+        "success": True,
+        "message": "Child profile addition postponed. Profile onboarding is complete.",
+    }
+
+@router.get("/children", response_model=List[ChildResponse])
+@children_router.get("", response_model=List[ChildResponse])
+@children_router.get("/", response_model=List[ChildResponse])
+def get_children(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Retrieves all children belonging to the authenticated parent.
+    Strictly isolated: parent_id is derived from verified token, ensuring Parent A cannot access Parent B's children.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, parent_id, name, dob, weight, gender, created_at, updated_at
+            FROM children
+            WHERE parent_id = ?
+            ORDER BY id ASC
+        """, (parent_id,))
+        rows = cursor.fetchall()
+
+        return [
+            ChildResponse(
+                id=r["id"],
+                parent_id=r["parent_id"],
+                name=r["name"],
+                dob=r["dob"],
+                weight=r["weight"],
+                gender=r["gender"],
+                created_at=r["created_at"],
+                updated_at=r["updated_at"]
+            )
+            for r in rows
+        ]
+
+@router.post("/children", response_model=ChildResponse)
+@children_router.post("", response_model=ChildResponse)
+@children_router.post("/", response_model=ChildResponse)
+def add_single_child(
+    req: ChildCreateRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Adds a single child profile for the authenticated parent.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    clean_name = req.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Child's name is required.")
+    clean_dob = req.dob.strip()
+    if not clean_dob:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Child's date of birth is required.")
+    clean_gender = req.gender.strip()
+    if clean_gender not in ("Boy", "Girl", "Other"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Child gender must be 'Boy', 'Girl', or 'Other'.")
+
+    now_str = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO children (parent_id, name, dob, weight, gender, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (parent_id, clean_name, clean_dob, req.weight, clean_gender, now_str))
+        child_id = cursor.lastrowid
+
+        cursor.execute("""
+            INSERT INTO child_profiles (user_id, name, dob, current_weight_kg, gender, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (parent_id, clean_name, clean_dob, req.weight, clean_gender, now_str))
+        conn.commit()
+
+        return ChildResponse(
+            id=child_id,
+            parent_id=parent_id,
+            name=clean_name,
+            dob=clean_dob,
+            weight=req.weight,
+            gender=clean_gender,
+            created_at=now_str
         )

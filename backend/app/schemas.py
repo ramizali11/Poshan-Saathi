@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 
 class UserRegisterRequest(BaseModel):
     name: str = Field(..., min_length=1, description="Full Name of the user")
@@ -81,6 +81,8 @@ class UserResponse(BaseModel):
     avatar_url: Optional[str] = None
     auth_provider: Optional[str] = "local"
     is_verified: bool = False
+    is_profile_complete: bool = False
+    onboarding_step: int = 0
     created_at: str
 
 class AuthResponse(BaseModel):
@@ -91,3 +93,33 @@ class AuthResponse(BaseModel):
     requires_verification: Optional[bool] = False
     email: Optional[str] = None
     cooldown_seconds: Optional[int] = None
+
+class OnboardingStep1Request(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, description="Full Name (REQUIRED)")
+    phone: Optional[str] = Field(None, description="10-digit mobile number (OPTIONAL)")
+    dob: Optional[str] = Field(None, description="Date of birth (YYYY-MM-DD)")
+    gender: Optional[str] = Field(None, description="Gender (Female, Male, Other)")
+    address: Optional[str] = Field(None, max_length=250, description="Residential address")
+    city: Optional[str] = Field(None, max_length=100, description="City / Town")
+    state: Optional[str] = Field(None, max_length=100, description="State")
+    district: Optional[str] = Field(None, max_length=100, description="District")
+    pin_code: Optional[str] = Field(None, description="Postal PIN code (6 digits)")
+
+class ChildCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, description="Child's full name (REQUIRED)")
+    dob: str = Field(..., min_length=4, max_length=20, description="Child's date of birth (REQUIRED)")
+    weight: Optional[float] = Field(None, ge=0.5, le=100.0, description="Child's weight in kg (OPTIONAL)")
+    gender: str = Field(..., min_length=1, max_length=20, description="Child's gender: Boy, Girl, Other (REQUIRED)")
+
+class ChildrenBatchCreateRequest(BaseModel):
+    children: List[ChildCreateRequest] = Field(default_factory=list, description="List of children to add")
+
+class ChildResponse(BaseModel):
+    id: int
+    parent_id: int
+    name: str
+    dob: str
+    weight: Optional[float] = None
+    gender: str
+    created_at: str
+    updated_at: Optional[str] = None

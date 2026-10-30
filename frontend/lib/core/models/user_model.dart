@@ -15,6 +15,8 @@ class UserModel {
   final String? avatarUrl;
   final String? authProvider;
   final bool isVerified;
+  final bool isProfileComplete;
+  final int onboardingStep;
   final String? createdAt;
   final String? token;
 
@@ -35,6 +37,8 @@ class UserModel {
     this.avatarUrl,
     this.authProvider = 'local',
     this.isVerified = false,
+    this.isProfileComplete = false,
+    this.onboardingStep = 0,
     this.createdAt,
     this.token,
   });
@@ -76,6 +80,11 @@ class UserModel {
       avatarUrl: (json['avatar_url'] ?? json['avatarUrl'] ?? json['picture']) as String?,
       authProvider: (json['auth_provider'] ?? json['authProvider']) as String? ?? 'local',
       isVerified: json['is_verified'] == true || json['is_verified'] == 1,
+      isProfileComplete: json['is_profile_complete'] == true || json['is_profile_complete'] == 1 || json['isProfileComplete'] == true,
+      onboardingStep: json['onboarding_step'] is int
+          ? json['onboarding_step'] as int
+          : (int.tryParse(json['onboarding_step']?.toString() ?? '') ??
+             int.tryParse(json['onboardingStep']?.toString() ?? '0') ?? 0),
       createdAt: json['created_at'] as String?,
       token: token ?? json['token'] as String?,
     );
@@ -99,6 +108,8 @@ class UserModel {
       'avatar_url': avatarUrl,
       'auth_provider': authProvider,
       'is_verified': isVerified,
+      'is_profile_complete': isProfileComplete,
+      'onboarding_step': onboardingStep,
       'created_at': createdAt,
       'token': token,
     };
@@ -121,6 +132,8 @@ class UserModel {
     String? avatarUrl,
     String? authProvider,
     bool? isVerified,
+    bool? isProfileComplete,
+    int? onboardingStep,
     String? createdAt,
     String? token,
   }) {
@@ -141,6 +154,8 @@ class UserModel {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       authProvider: authProvider ?? this.authProvider,
       isVerified: isVerified ?? this.isVerified,
+      isProfileComplete: isProfileComplete ?? this.isProfileComplete,
+      onboardingStep: onboardingStep ?? this.onboardingStep,
       createdAt: createdAt ?? this.createdAt,
       token: token ?? this.token,
     );

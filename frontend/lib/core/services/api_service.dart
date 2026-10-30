@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
+import '../models/child_model.dart';
 import 'user_session.dart';
 
 class AuthResult {
@@ -683,5 +684,204 @@ class ApiService {
       client.close(force: true);
     }
     return UserSession.instance.currentUser;
+  }
+
+  /// Saves Step 1 Caregiver Onboarding details
+  Future<AuthResult> saveOnboardingStep1({
+    required String name,
+    String? phone,
+    String? dob,
+    String? gender,
+    String? address,
+    String? city,
+    String? state,
+    String? district,
+    String? pinCode,
+  }) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final token = UserSession.instance.currentToken;
+      if (token == null || token.isEmpty) {
+        return const AuthResult(
+          success: false,
+          message: 'Session token missing. Please sign in again.',
+        );
+      }
+
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/onboarding/step-1');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        'name': name.trim(),
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.replaceAll(' ', '').trim(),
+        if (dob != null && dob.trim().isNotEmpty) 'dob': dob.trim(),
+        if (gender != null && gender.trim().isNotEmpty) 'gender': gender.trim(),
+        if (address != null && address.trim().isNotEmpty) 'address': address.trim(),
+        if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+        if (state != null && state.trim().isNotEmpty) 'state': state.trim(),
+        if (district != null && district.trim().isNotEmpty) 'district': district.trim(),
+        if (pinCode != null && pinCode.trim().isNotEmpty) 'pin_code': pinCode.trim(),
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(responseBody) as Map<String, dynamic>;
+
+      if (response.statusCode == 200) {
+        final updatedUser = UserModel.fromJson(data, token: token);
+        await UserSession.instance.setUser(updatedUser);
+        return AuthResult(
+          success: true,
+          message: 'Profile information saved successfully.',
+          user: updatedUser,
+          token: token,
+        );
+      } else {
+        final errorMsg = data['detail'] as String? ?? 'Could not save profile details.';
+        return AuthResult(success: false, message: errorMsg);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Network error during onboarding step 1: $e');
+      return AuthResult(success: false, message: _classifyNetworkError(e));
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Saves Step 2 Child/Children Onboarding details
+  Future<AuthResult> saveOnboardingStep2({
+    required List<Map<String, dynamic>> children,
+  }) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final token = UserSession.instance.currentToken;
+      if (token == null || token.isEmpty) {
+        return const AuthResult(
+          success: false,
+          message: 'Session token missing. Please sign in again.',
+        );
+      }
+
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/onboarding/step-2');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = {'children': children};
+      request.write(jsonEncode(body));
+
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(responseBody) as Map<String, dynamic>;
+
+      if (response.statusCode == 200) {
+        final currentUser = UserSession.instance.currentUser;
+        if (currentUser != null) {
+          final completedUser = currentUser.copyWith(
+            isProfileComplete: true,
+            onboardingStep: 2,
+          );
+          await UserSession.instance.setUser(completedUser);
+        }
+        return AuthResult(
+          success: true,
+          message: data['message'] as String? ?? 'Child details saved successfully!',
+          user: UserSession.instance.currentUser,
+          token: token,
+        );
+      } else {
+        final errorMsg = data['detail'] as String? ?? 'Could not save child details.';
+        return AuthResult(success: false, message: errorMsg);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Network error during onboarding step 2: $e');
+      return AuthResult(success: false, message: _classifyNetworkError(e));
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Skips Step 2 Child Onboarding ("Add Later")
+  Future<AuthResult> skipOnboardingStep2() async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final token = UserSession.instance.currentToken;
+      if (token == null || token.isEmpty) {
+        return const AuthResult(
+          success: false,
+          message: 'Session token missing. Please sign in again.',
+        );
+      }
+
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/onboarding/skip-step-2');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 25));
+      final responseBody = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(responseBody) as Map<String, dynamic>;
+
+      if (response.statusCode == 200) {
+        final currentUser = UserSession.instance.currentUser;
+        if (currentUser != null) {
+          final completedUser = currentUser.copyWith(
+            isProfileComplete: true,
+            onboardingStep: 2,
+          );
+          await UserSession.instance.setUser(completedUser);
+        }
+        return AuthResult(
+          success: true,
+          message: data['message'] as String? ?? 'Child info skipped.',
+          user: UserSession.instance.currentUser,
+          token: token,
+        );
+      } else {
+        final errorMsg = data['detail'] as String? ?? 'Could not skip step.';
+        return AuthResult(success: false, message: errorMsg);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Network error during skip step 2: $e');
+      return AuthResult(success: false, message: _classifyNetworkError(e));
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Retrieves children profiles belonging to authenticated parent
+  Future<List<ChildModel>> fetchChildren() async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return [];
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children');
+
+      final request = await client.getUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 25));
+      if (response.statusCode == 200) {
+        final responseBody = await response.transform(utf8.decoder).join();
+        final list = jsonDecode(responseBody) as List<dynamic>;
+        return list.map((item) => ChildModel.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not fetch children from backend: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return [];
   }
 }

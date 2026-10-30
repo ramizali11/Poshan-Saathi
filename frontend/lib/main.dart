@@ -9,6 +9,8 @@ import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/auth/forgot_password_screen.dart';
 import 'ui/screens/auth/reset_password_screen.dart';
 import 'ui/screens/onboarding/add_child_profile_screen.dart';
+import 'ui/screens/onboarding/google_onboarding_step1_screen.dart';
+import 'ui/screens/onboarding/google_onboarding_step2_screen.dart';
 import 'ui/screens/parent/parent_main_scaffold.dart';
 import 'ui/screens/parent/edit_profile_screen.dart';
 import 'ui/screens/parent/recipe_details_screen.dart';
@@ -45,6 +47,8 @@ class PoshanSaathiApp extends StatelessWidget {
         '/reset_password': (context) => const ResetPasswordScreen(),
         '/reset-password': (context) => const ResetPasswordScreen(),
         '/add_child': (context) => const AddChildProfileScreen(),
+        '/google_onboarding_step1': (context) => const GoogleOnboardingStep1Screen(),
+        '/google_onboarding_step2': (context) => const GoogleOnboardingStep2Screen(),
         '/dashboard': (context) => const ParentMainScaffold(initialIndex: 0),
         '/edit_profile': (context) => const EditProfileScreen(),
         '/meals': (context) => const ParentMainScaffold(initialIndex: 1),

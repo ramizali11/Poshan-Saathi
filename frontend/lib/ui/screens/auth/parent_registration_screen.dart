@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/user_session.dart';
 import '../../../core/widgets/social_auth_buttons.dart';
 
 class ParentRegistrationScreen extends StatefulWidget {
@@ -109,6 +110,19 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
           backgroundColor: AppColors.statusRed,
         ),
       );
+    }
+  }
+
+  void _navigateAfterAuth() {
+    final user = UserSession.instance.currentUser;
+    if (user != null && !user.isProfileComplete) {
+      if (user.onboardingStep == 1) {
+        Navigator.pushNamedAndRemoveUntil(context, '/google_onboarding_step2', (route) => false);
+      } else {
+        Navigator.pushNamedAndRemoveUntil(context, '/google_onboarding_step1', (route) => false);
+      }
+    } else {
+      Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
     }
   }
 
@@ -411,7 +425,7 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
                       duration: Duration(seconds: 2),
                     ),
                   );
-                  Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (route) => false);
+                  _navigateAfterAuth();
                 },
                 onAuthError: (error) {
                   ScaffoldMessenger.of(context).showSnackBar(
