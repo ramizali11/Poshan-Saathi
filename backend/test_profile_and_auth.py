@@ -679,5 +679,143 @@ class TestAuthAndProfile(unittest.TestCase):
 
         print("[OK] Test 17: Child update, weight persistence, and isolation verified.")
 
+
+    def test_18_child_height_measurements(self):
+        """
+        Verifies:
+        - Creation of accurate child height measurements in cm.
+        - Consecutive growth difference calculation (+1.5 cm, +1.8 cm).
+        - Update and delete of measurements.
+        - Input validation (rejects invalid heights).
+        - Multi-tenancy isolation between caregivers.
+        """
+        from app.routers.auth import (
+            add_single_child,
+            get_child_height_measurements,
+            add_child_height_measurement,
+            update_child_height_measurement,
+            delete_child_height_measurement,
+        )
+        from app.schemas import (
+            ChildCreateRequest,
+            HeightMeasurementCreate,
+            HeightMeasurementUpdate,
+        )
+
+        ts = int(datetime.now().timestamp())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Parent Test 18', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p18_{ts}@gmail.com", now))
+            parent_id = cursor.lastrowid
+            
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Other Parent 18', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p18_other_{ts}@gmail.com", now))
+            other_parent_id = cursor.lastrowid
+            conn.commit()
+
+        token_parent = generate_token(parent_id, None)
+        token_other = generate_token(other_parent_id, None)
+
+        # 1. Register child
+        child = add_single_child(
+            req=ChildCreateRequest(name="Ananya", dob="2024-01-01", gender="Girl"),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(child.name, "Ananya")
+
+        # 2. Initially no height records
+        initial_records = get_child_height_measurements(
+            child_id=child.id,
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(len(initial_records), 0)
+
+        # 3. Add first height: 72.5 cm on 2026-01-10
+        m1 = add_child_height_measurement(
+            child_id=child.id,
+            req=HeightMeasurementCreate(height_cm=72.5, measurement_date="2026-01-10", notes="First record"),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(m1.height_cm, 72.5)
+        self.assertIsNone(m1.diff_from_previous)
+
+        # 4. Add second height: 74.0 cm on 2026-02-10 -> diff should be +1.5 cm
+        m2 = add_child_height_measurement(
+            child_id=child.id,
+            req=HeightMeasurementCreate(height_cm=74.0, measurement_date="2026-02-10"),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(m2.height_cm, 74.0)
+        self.assertEqual(m2.diff_from_previous, 1.5)
+
+        # 5. Add third height: 75.8 cm on 2026-03-10 -> diff should be +1.8 cm
+        m3 = add_child_height_measurement(
+            child_id=child.id,
+            req=HeightMeasurementCreate(height_cm=75.8, measurement_date="2026-03-10"),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(m3.height_cm, 75.8)
+        self.assertEqual(m3.diff_from_previous, 1.8)
+
+        # 6. Fetch all measurements in order
+        history = get_child_height_measurements(
+            child_id=child.id,
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(len(history), 3)
+        self.assertEqual(history[0].height_cm, 72.5)
+        self.assertIsNone(history[0].diff_from_previous)
+        self.assertEqual(history[1].height_cm, 74.0)
+        self.assertEqual(history[1].diff_from_previous, 1.5)
+        self.assertEqual(history[2].height_cm, 75.8)
+        self.assertEqual(history[2].diff_from_previous, 1.8)
+
+        # 7. Update second measurement: correct to 74.2 cm
+        updated_m2 = update_child_height_measurement(
+            child_id=child.id,
+            measurement_id=m2.id,
+            req=HeightMeasurementUpdate(height_cm=74.2),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(updated_m2.height_cm, 74.2)
+
+        # 8. Delete third measurement
+        del_res = delete_child_height_measurement(
+            child_id=child.id,
+            measurement_id=m3.id,
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertTrue(del_res.success)
+
+        # Confirm length is now 2
+        history_after_del = get_child_height_measurements(
+            child_id=child.id,
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(len(history_after_del), 2)
+
+        # 9. Validation: reject negative or absurd height
+        with self.assertRaises(Exception):
+            HeightMeasurementCreate(height_cm=15.0)
+        with self.assertRaises(Exception):
+            HeightMeasurementCreate(height_cm=300.0)
+
+        # 10. Multi-tenancy: other parent cannot access Ananya's records
+        with self.assertRaises(HTTPException) as ctx:
+            get_child_height_measurements(
+                child_id=child.id,
+                authorization=f"Bearer {token_other}"
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+        print("[OK] Test 18: Child height measurements, diff calculations, and multi-tenant isolation verified.")
+
 if __name__ == "__main__":
     unittest.main()

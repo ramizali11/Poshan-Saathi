@@ -118,3 +118,25 @@ class ChildResponse(BaseModel):
     gender: str
     created_at: str
     updated_at: Optional[str] = None
+
+
+class HeightMeasurementCreate(BaseModel):
+    height_cm: float = Field(..., gt=20.0, lt=250.0, description="Measured height in centimetres (cm)")
+    measurement_date: Optional[str] = Field(None, description="Date of measurement (YYYY-MM-DD)")
+    notes: Optional[str] = Field("", max_length=500, description="Optional notes")
+
+class HeightMeasurementUpdate(BaseModel):
+    height_cm: Optional[float] = Field(None, gt=20.0, lt=250.0, description="Measured height in centimetres (cm)")
+    measurement_date: Optional[str] = Field(None, description="Date of measurement (YYYY-MM-DD)")
+    notes: Optional[str] = Field(None, max_length=500, description="Optional notes")
+
+class HeightMeasurementResponse(BaseModel):
+    id: int
+    child_id: int
+    parent_id: int
+    height_cm: float
+    measurement_date: str
+    notes: Optional[str] = ""
+    created_at: str
+    updated_at: str
+    diff_from_previous: Optional[float] = None

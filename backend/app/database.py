@@ -248,6 +248,28 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_children_parent_id ON children(parent_id);
         """)
         
+        # Create child_height_measurements table for tracking child growth history in cm
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS child_height_measurements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                child_id INTEGER NOT NULL,
+                parent_id INTEGER NOT NULL,
+                height_cm REAL NOT NULL,
+                measurement_date TEXT NOT NULL,
+                notes TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_height_child_date ON child_height_measurements(child_id, measurement_date);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_height_parent_id ON child_height_measurements(parent_id);
+        """)
+
         conn.commit()
         print(f"[DB] SQLite database initialized at: {DB_PATH}")
 

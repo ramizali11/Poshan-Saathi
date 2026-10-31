@@ -89,6 +89,21 @@ class ChildModel {
   }
 
   /// Calculates human-readable age from Date of Birth
+  /// Calculates child's age in full months
+  int get computedAgeMonths {
+    try {
+      final birthDate = DateTime.parse(dob);
+      final today = DateTime.now();
+      int months = (today.year - birthDate.year) * 12 + (today.month - birthDate.month);
+      if (today.day < birthDate.day) {
+        months -= 1;
+      }
+      return months.clamp(0, 240);
+    } catch (_) {
+      return 0;
+    }
+  }
+
   String get ageDisplay {
     try {
       final birthDate = DateTime.parse(dob);

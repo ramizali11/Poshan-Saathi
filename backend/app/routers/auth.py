@@ -38,6 +38,9 @@ from ..schemas import (
     ChildUpdateRequest,
     ChildrenBatchCreateRequest,
     ChildResponse,
+    HeightMeasurementCreate,
+    HeightMeasurementUpdate,
+    HeightMeasurementResponse,
 )
 
 logger = logging.getLogger("poshan_saathi.auth")
@@ -1843,4 +1846,295 @@ def update_child(
             gender=updated_row["gender"],
             created_at=updated_row["created_at"],
             updated_at=updated_row["updated_at"]
+        )
+
+
+# ============================================================================
+# CHILD HEIGHT MEASUREMENT & GROWTH TRACKING ENDPOINTS
+# ============================================================================
+
+@router.get("/children/{child_id}/heights", response_model=List[HeightMeasurementResponse])
+@children_router.get("/{child_id}/heights", response_model=List[HeightMeasurementResponse])
+def get_child_height_measurements(
+    child_id: int,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Retrieves all actual height measurements for a specific child.
+    - Requires authenticated parent bearer token.
+    - Strictly prevents unauthorized access across parents.
+    - Calculates growth differences between consecutive chronological measurements.
+    - Never fabricates random or synthetic measurements.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM children WHERE id = ? AND parent_id = ?", (child_id, parent_id))
+        child_row = cursor.fetchone()
+        if not child_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Child profile not found or does not belong to the authenticated caregiver."
+            )
+
+        cursor.execute("""
+            SELECT id, child_id, parent_id, height_cm, measurement_date, notes, created_at, updated_at
+            FROM child_height_measurements
+            WHERE child_id = ? AND parent_id = ?
+            ORDER BY measurement_date ASC, id ASC
+        """, (child_id, parent_id))
+        rows = cursor.fetchall()
+
+        results: List[HeightMeasurementResponse] = []
+        prev_height = None
+        for row in rows:
+            diff = None
+            if prev_height is not None:
+                diff = round(row["height_cm"] - prev_height, 2)
+            prev_height = row["height_cm"]
+
+            results.append(HeightMeasurementResponse(
+                id=row["id"],
+                child_id=row["child_id"],
+                parent_id=row["parent_id"],
+                height_cm=round(row["height_cm"], 2),
+                measurement_date=row["measurement_date"],
+                notes=row["notes"] or "",
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                diff_from_previous=diff
+            ))
+
+        return results
+
+
+@router.post("/children/{child_id}/heights", response_model=HeightMeasurementResponse, status_code=status.HTTP_201_CREATED)
+@children_router.post("/{child_id}/heights", response_model=HeightMeasurementResponse, status_code=status.HTTP_201_CREATED)
+def add_child_height_measurement(
+    child_id: int,
+    req: HeightMeasurementCreate,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Records a new accurate height measurement in centimetres (cm).
+    - Validates positive, reasonable numeric value (20.0 cm to 250.0 cm).
+    - Defaults measurement_date to today's date if missing.
+    - Persists permanently to SQLite database without fabricating synthetic data.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    if req.height_cm <= 20.0 or req.height_cm >= 250.0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please enter a valid height measurement between 20.0 cm and 250.0 cm."
+        )
+
+    # Validate measurement date format (YYYY-MM-DD)
+    meas_date = req.measurement_date.strip() if req.measurement_date else None
+    if not meas_date:
+        meas_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    else:
+        try:
+            datetime.strptime(meas_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Measurement date must follow YYYY-MM-DD format."
+            )
+
+    now_str = datetime.now(timezone.utc).isoformat()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM children WHERE id = ? AND parent_id = ?", (child_id, parent_id))
+        child_row = cursor.fetchone()
+        if not child_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Child profile not found or does not belong to the authenticated caregiver."
+            )
+
+        cursor.execute("""
+            INSERT INTO child_height_measurements (
+                child_id, parent_id, height_cm, measurement_date, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            child_id,
+            parent_id,
+            round(req.height_cm, 2),
+            meas_date,
+            (req.notes or "").strip(),
+            now_str,
+            now_str
+        ))
+        new_id = cursor.lastrowid
+
+        # Update child updated_at
+        cursor.execute("UPDATE children SET updated_at = ? WHERE id = ?", (now_str, child_id))
+        conn.commit()
+
+        # Find preceding measurement to calculate diff
+        cursor.execute("""
+            SELECT height_cm FROM child_height_measurements
+            WHERE child_id = ? AND parent_id = ? AND id != ? AND measurement_date <= ?
+            ORDER BY measurement_date DESC, id DESC
+            LIMIT 1
+        """, (child_id, parent_id, new_id, meas_date))
+        prev_row = cursor.fetchone()
+        diff = None
+        if prev_row:
+            diff = round(req.height_cm - prev_row["height_cm"], 2)
+
+        return HeightMeasurementResponse(
+            id=new_id,
+            child_id=child_id,
+            parent_id=parent_id,
+            height_cm=round(req.height_cm, 2),
+            measurement_date=meas_date,
+            notes=(req.notes or "").strip(),
+            created_at=now_str,
+            updated_at=now_str,
+            diff_from_previous=diff
+        )
+
+
+@router.put("/children/{child_id}/heights/{measurement_id}", response_model=HeightMeasurementResponse)
+@router.patch("/children/{child_id}/heights/{measurement_id}", response_model=HeightMeasurementResponse)
+@children_router.put("/{child_id}/heights/{measurement_id}", response_model=HeightMeasurementResponse)
+@children_router.patch("/{child_id}/heights/{measurement_id}", response_model=HeightMeasurementResponse)
+def update_child_height_measurement(
+    child_id: int,
+    measurement_id: int,
+    req: HeightMeasurementUpdate,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Updates an existing height measurement record.
+    - Strictly authorized to the owning parent.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, child_id, parent_id, height_cm, measurement_date, notes, created_at, updated_at
+            FROM child_height_measurements
+            WHERE id = ? AND child_id = ? AND parent_id = ?
+        """, (measurement_id, child_id, parent_id))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Measurement record not found or unauthorized."
+            )
+
+        updates = []
+        params = []
+
+        if req.height_cm is not None:
+            if req.height_cm <= 20.0 or req.height_cm >= 250.0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Please enter a valid height measurement between 20.0 cm and 250.0 cm."
+                )
+            updates.append("height_cm = ?")
+            params.append(round(req.height_cm, 2))
+
+        if req.measurement_date is not None and req.measurement_date.strip():
+            meas_date = req.measurement_date.strip()
+            try:
+                datetime.strptime(meas_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Measurement date must follow YYYY-MM-DD format."
+                )
+            updates.append("measurement_date = ?")
+            params.append(meas_date)
+
+        if req.notes is not None:
+            updates.append("notes = ?")
+            params.append(req.notes.strip())
+
+        now_str = datetime.now(timezone.utc).isoformat()
+        updates.append("updated_at = ?")
+        params.append(now_str)
+
+        if updates:
+            params.extend([measurement_id, child_id, parent_id])
+            cursor.execute(f"""
+                UPDATE child_height_measurements
+                SET {', '.join(updates)}
+                WHERE id = ? AND child_id = ? AND parent_id = ?
+            """, tuple(params))
+            conn.commit()
+
+        cursor.execute("""
+            SELECT id, child_id, parent_id, height_cm, measurement_date, notes, created_at, updated_at
+            FROM child_height_measurements
+            WHERE id = ?
+        """, (measurement_id,))
+        updated_row = cursor.fetchone()
+
+        # Preceding diff
+        cursor.execute("""
+            SELECT height_cm FROM child_height_measurements
+            WHERE child_id = ? AND parent_id = ? AND id != ? AND measurement_date <= ?
+            ORDER BY measurement_date DESC, id DESC
+            LIMIT 1
+        """, (child_id, parent_id, measurement_id, updated_row["measurement_date"]))
+        prev_row = cursor.fetchone()
+        diff = None
+        if prev_row:
+            diff = round(updated_row["height_cm"] - prev_row["height_cm"], 2)
+
+        return HeightMeasurementResponse(
+            id=updated_row["id"],
+            child_id=updated_row["child_id"],
+            parent_id=updated_row["parent_id"],
+            height_cm=round(updated_row["height_cm"], 2),
+            measurement_date=updated_row["measurement_date"],
+            notes=updated_row["notes"] or "",
+            created_at=updated_row["created_at"],
+            updated_at=updated_row["updated_at"],
+            diff_from_previous=diff
+        )
+
+
+@router.delete("/children/{child_id}/heights/{measurement_id}", response_model=GenericMessageResponse)
+@children_router.delete("/{child_id}/heights/{measurement_id}", response_model=GenericMessageResponse)
+def delete_child_height_measurement(
+    child_id: int,
+    measurement_id: int,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Deletes an existing height measurement record.
+    - Strictly authorized to the owning parent.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id FROM child_height_measurements
+            WHERE id = ? AND child_id = ? AND parent_id = ?
+        """, (measurement_id, child_id, parent_id))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Measurement record not found or unauthorized."
+            )
+
+        cursor.execute("""
+            DELETE FROM child_height_measurements
+            WHERE id = ? AND child_id = ? AND parent_id = ?
+        """, (measurement_id, child_id, parent_id))
+        conn.commit()
+
+        return GenericMessageResponse(
+            success=True,
+            message="Height measurement deleted successfully."
         )

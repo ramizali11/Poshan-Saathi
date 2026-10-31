@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../models/child_model.dart';
+import '../models/height_measurement_model.dart';
 import 'user_session.dart';
 
 class AuthResult {
@@ -902,5 +903,144 @@ class ApiService {
       client.close(force: true);
     }
     return null;
+  }
+
+
+  /// Fetches actual recorded height measurements for a child
+  Future<List<HeightMeasurementModel>> fetchHeightMeasurements(int childId) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return [];
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId/heights');
+
+      final request = await client.getUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 25));
+      if (response.statusCode == 200) {
+        final responseBody = await response.transform(utf8.decoder).join();
+        final list = jsonDecode(responseBody) as List<dynamic>;
+        return list.map((item) => HeightMeasurementModel.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not fetch height measurements: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return [];
+  }
+
+  /// Records a new height measurement in centimetres (cm)
+  Future<HeightMeasurementModel?> addHeightMeasurement({
+    required int childId,
+    required double heightCm,
+    String? measurementDate,
+    String? notes,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId/heights');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        'height_cm': heightCm,
+        if (measurementDate != null && measurementDate.isNotEmpty)
+          'measurement_date': measurementDate,
+        if (notes != null) 'notes': notes.trim(),
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return HeightMeasurementModel.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not add height measurement: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+  /// Updates an existing height measurement record
+  Future<HeightMeasurementModel?> updateHeightMeasurement({
+    required int childId,
+    required int measurementId,
+    double? heightCm,
+    String? measurementDate,
+    String? notes,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId/heights/$measurementId');
+
+      final request = await client.putUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        if (heightCm != null) 'height_cm': heightCm,
+        if (measurementDate != null && measurementDate.isNotEmpty)
+          'measurement_date': measurementDate,
+        if (notes != null) 'notes': notes.trim(),
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return HeightMeasurementModel.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not update height measurement: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+  /// Deletes an existing height measurement record
+  Future<bool> deleteHeightMeasurement({
+    required int childId,
+    required int measurementId,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return false;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId/heights/$measurementId');
+
+      final request = await client.deleteUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('ℹ️ Could not delete height measurement: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return false;
   }
 }
