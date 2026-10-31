@@ -818,4 +818,89 @@ class ApiService {
     }
     return [];
   }
+
+  /// Updates child details (such as weight, dob, name) via PATCH /api/children/{childId}
+  Future<ChildModel?> updateChild({
+    required int childId,
+    String? name,
+    String? dob,
+    double? weight,
+    String? gender,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId');
+
+      final request = await client.patchUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        if (name != null) 'name': name.trim(),
+        if (dob != null) 'dob': dob.trim(),
+        if (weight != null) 'weight': weight,
+        if (gender != null) 'gender': gender.trim(),
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return ChildModel.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not update child in backend: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+  /// Adds a single child profile for the authenticated parent via POST /api/children
+  Future<ChildModel?> addChild({
+    required String name,
+    required String dob,
+    required String gender,
+    double? weight,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        'name': name.trim(),
+        'dob': dob.trim(),
+        'gender': gender.trim(),
+        if (weight != null) 'weight': weight,
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return ChildModel.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not add child in backend: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
 }

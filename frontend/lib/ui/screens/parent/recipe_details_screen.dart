@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../core/services/child_session.dart';
 
 class RecipeDetailsScreen extends StatefulWidget {
   const RecipeDetailsScreen({super.key});
@@ -289,9 +290,11 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
             ElevatedButton.icon(
               onPressed: () {
                 setState(() => _isCooked = true);
+                final childName = ChildSession.instance.activeChildName;
+                final childAge = ChildSession.instance.activeChild?.ageDisplay ?? 'Milestone';
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Logged into Aarav's Daily Micronutrient Tracker (14m Milestone)!"),
+                  SnackBar(
+                    content: Text("Logged into $childName's Daily Micronutrient Tracker ($childAge)!"),
                     backgroundColor: AppColors.statusGreen,
                   ),
                 );

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
+import 'child_session.dart';
 
 /// Central singleton session that manages the currently logged-in user.
 /// Default state is null (no hardcoded fallback user like Priya).
@@ -86,6 +87,7 @@ class UserSession {
   /// Clears user from memory and deletes persisted session file on logout.
   Future<void> clearUser() async {
     currentUserNotifier.value = null;
+    ChildSession.instance.clear();
     if (kIsWeb) return;
     try {
       final file = _getSessionFile();

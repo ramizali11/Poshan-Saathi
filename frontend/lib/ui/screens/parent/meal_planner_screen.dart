@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../data/mock_data.dart';
+import '../../../core/models/child_model.dart';
+import '../../../core/services/child_session.dart';
+import '../../../core/widgets/child_selector_widget.dart';
 
 class MealPlannerScreen extends StatefulWidget {
   const MealPlannerScreen({super.key});
@@ -26,213 +29,224 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Meal Planner (આહાર આયોજન)',
-              style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+    return ValueListenableBuilder<ChildModel?>(
+      valueListenable: ChildSession.instance.selectedChildNotifier,
+      builder: (context, activeChild, _) {
+        final childName = activeChild?.name ?? 'Child';
+        final childAge = activeChild?.ageDisplay ?? 'Toddler';
+
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Meal Planner (આહાર આયોજન)',
+                  style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  activeChild != null
+                      ? '$childName • $childAge • Nutrition Recommendations'
+                      : 'Child Nutrition Recommendations',
+                  style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
             ),
-            Text(
-              'Aarav Shah • 14m • Stage 3 Coarse Mash',
-              style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textSecondary),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.shopping_basket_outlined),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Weekly local produce ingredients exported to shopping list!')),
-              );
-            },
+            actions: [
+              const ChildSelectorPill(isCompact: true),
+              IconButton(
+                icon: const Icon(Icons.shopping_basket_outlined),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Weekly local produce ingredients exported to shopping list!')),
+                  );
+                },
+              ),
+            ],
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Horizontal Date Picker Strip
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                children: List.generate(_weekDays.length, (index) {
-                  final isSelected = _selectedDayIndex == index;
-                  final d = _weekDays[index];
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _selectedDayIndex = index),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary : Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected ? AppColors.primary : AppColors.divider,
-                          ),
-                          boxShadow: isSelected
-                              ? [
-                                  BoxShadow(
-                                    color: AppColors.primary.withOpacity(0.2),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              d['day']!,
-                              style: AppTypography.labelSmall.copyWith(
-                                color: isSelected ? Colors.white : AppColors.textMuted,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Horizontal Date Picker Strip
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: List.generate(_weekDays.length, (index) {
+                      final isSelected = _selectedDayIndex == index;
+                      final d = _weekDays[index];
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selectedDayIndex = index),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: isSelected ? AppColors.primary : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected ? AppColors.primary : AppColors.divider,
                               ),
+                              boxShadow: isSelected
+                                  ? [
+                                      BoxShadow(
+                                        color: AppColors.primary.withOpacity(0.2),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ]
+                                  : null,
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              d['date']!,
-                              style: AppTypography.labelLarge.copyWith(
-                                color: isSelected ? Colors.white : AppColors.textPrimary,
+                            child: Column(
+                              children: [
+                                Text(
+                                  d['day']!,
+                                  style: AppTypography.labelSmall.copyWith(
+                                    color: isSelected ? Colors.white : AppColors.textMuted,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  d['date']!,
+                                  style: AppTypography.labelLarge.copyWith(
+                                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Daily Diversity Tracker (WHO 5-Food-Group Metric)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.divider),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Daily Diversity Tracker\n(દૈનિક પોષણ વિવિધતા)',
+                                style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '4 / 5 Groups',
+                              style: AppTypography.labelMedium.copyWith(
+                                color: AppColors.primaryDark,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // Daily Diversity Tracker (WHO 5-Food-Group Metric)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Daily Diversity Tracker\n(દૈનિક પોષણ વિવિધતા)',
-                            style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryContainer,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                      const SizedBox(height: 12),
+                      _diversityItem('1. Grains & Millets (ધાન્ય / બાજરી-રાગી)', true),
+                      _diversityItem('2. Pulses & Lentils (કઠોળ / મગ દાળ)', true),
+                      _diversityItem('3. Yellow/Orange Veg & Fruits (ગાજર / પપૈયું)', true),
+                      _diversityItem('4. Green Leafy Veg (લીલા શાકભાજી)', true),
+                      _diversityItem('5. Dairy & Animal Sourced (દૂધ-દહીં) — Target for dinner', false),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Choking Safety Guide
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.tertiaryLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.tertiary.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.verified_user_rounded, color: AppColors.tertiaryDark, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
                         child: Text(
-                          '4 / 5 Groups',
-                          style: AppTypography.labelMedium.copyWith(
-                            color: AppColors.primaryDark,
-                            fontWeight: FontWeight.bold,
+                          'For $childName ($childAge): avoid whole nuts, raw carrots, or large round grapes. Mash or slice into thin matchsticks.',
+                          style: AppTypography.bodySmall.copyWith(
+                            fontSize: 11,
+                            color: AppColors.tertiaryDark,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  _diversityItem('1. Grains & Millets (ધાન્ય / બાજરી-રાગી)', true),
-                  _diversityItem('2. Pulses & Lentils (કઠોળ / મગ દાળ)', true),
-                  _diversityItem('3. Yellow/Orange Veg & Fruits (ગાજર / પપૈયું)', true),
-                  _diversityItem('4. Green Leafy Veg (લીલા શાકભાજી)', true),
-                  _diversityItem('5. Dairy & Animal Sourced (દૂધ-દહીં) — Target for dinner', false),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
+                ),
+                const SizedBox(height: 18),
 
-            // Choking Safety Guide
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.tertiaryLight,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.tertiary.withOpacity(0.3)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.verified_user_rounded, color: AppColors.tertiaryDark, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'For 14-month toddlers: avoid whole nuts, raw carrots, or large round grapes. Mash or slice into thin matchsticks.',
-                      style: AppTypography.bodySmall.copyWith(
-                        fontSize: 11,
-                        color: AppColors.tertiaryDark,
+                // Today's Meal Routine Timeline (4 Meals)
+                Text(
+                  "Today's Feeding Schedule (આજનો સમયપત્રક)",
+                  style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+
+                ..._meals.map((meal) => _buildMealCard(meal)),
+
+                const SizedBox(height: 16),
+
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Generating personalized weekly AI meal plan for $childName ($childAge)...')),
+                          );
+                        },
+                        icon: const Icon(Icons.auto_awesome, size: 16),
+                        label: const Text('Generate Weekly Plan', style: TextStyle(fontSize: 12)),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-
-            // Today's Meal Routine Timeline (4 Meals)
-            Text(
-              "Today's Feeding Schedule (આજનો સમયપત્રક)",
-              style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
-
-            ..._meals.map((meal) => _buildMealCard(meal)),
-
-            const SizedBox(height: 16),
-
-            // Action Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Generating personalized weekly AI meal plan for 14-month cohort...')),
-                      );
-                    },
-                    icon: const Icon(Icons.auto_awesome, size: 16),
-                    label: const Text('Generate Weekly Plan', style: TextStyle(fontSize: 12)),
-                  ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.shopping_basket_rounded, size: 16),
+                        label: const Text('Shopping List', style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.shopping_basket_rounded, size: 16),
-                    label: const Text('Shopping List', style: TextStyle(fontSize: 12)),
-                  ),
-                ),
+                const SizedBox(height: 20),
               ],
             ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -342,4 +356,3 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     );
   }
 }
-

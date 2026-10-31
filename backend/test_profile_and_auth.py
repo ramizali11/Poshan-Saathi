@@ -625,5 +625,59 @@ class TestAuthAndProfile(unittest.TestCase):
 
         print("[OK] Test 16: Apple Sign-In routes, functions, and schemas completely removed.")
 
+    def test_17_child_update_and_weight_persistence(self):
+        """Verifies updating child weight and details, and prevents cross-parent updates."""
+        from app.routers.auth import update_child, add_single_child
+        from app.schemas import ChildUpdateRequest, ChildCreateRequest
+
+        ts = int(datetime.now().timestamp())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Parent Test 17', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p17_{ts}@gmail.com", now))
+            parent_id = cursor.lastrowid
+            
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Other Parent 17', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p17_other_{ts}@gmail.com", now))
+            other_parent_id = cursor.lastrowid
+            conn.commit()
+
+        token_parent = generate_token(parent_id, None)
+        token_other = generate_token(other_parent_id, None)
+
+        # 1. Add child with missing weight
+        created = add_single_child(
+            req=ChildCreateRequest(name="Rehan", dob="2024-03-15", gender="Boy", weight=None),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(created.name, "Rehan")
+        self.assertIsNone(created.weight)
+
+        # 2. Update weight via PATCH /children/{child_id}
+        updated = update_child(
+            child_id=created.id,
+            req=ChildUpdateRequest(weight=12.4),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(updated.weight, 12.4)
+        self.assertIsNotNone(updated.updated_at)
+
+        # 3. Other parent attempts to update this child -> must return 404
+        with self.assertRaises(HTTPException) as ctx:
+            update_child(
+                child_id=created.id,
+                req=ChildUpdateRequest(weight=15.0),
+                authorization=f"Bearer {token_other}"
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+        print("[OK] Test 17: Child update, weight persistence, and isolation verified.")
+
 if __name__ == "__main__":
     unittest.main()

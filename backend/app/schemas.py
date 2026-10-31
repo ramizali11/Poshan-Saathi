@@ -100,6 +100,12 @@ class ChildCreateRequest(BaseModel):
     weight: Optional[float] = Field(None, ge=0.5, le=100.0, description="Child's weight in kg (OPTIONAL)")
     gender: str = Field(..., min_length=1, max_length=20, description="Child's gender: Boy, Girl, Other (REQUIRED)")
 
+class ChildUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="Child's full name")
+    dob: Optional[str] = Field(None, min_length=4, max_length=20, description="Child's date of birth")
+    weight: Optional[float] = Field(None, ge=0.5, le=100.0, description="Child's weight in kg")
+    gender: Optional[str] = Field(None, min_length=1, max_length=20, description="Child's gender: Boy, Girl, Other")
+
 class ChildrenBatchCreateRequest(BaseModel):
     children: List[ChildCreateRequest] = Field(default_factory=list, description="List of children to add")
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/user_session.dart';
+import 'core/services/child_session.dart';
 import 'ui/screens/auth/welcome_role_screen.dart';
 import 'ui/screens/auth/onboarding_carousel_screen.dart';
 import 'ui/screens/auth/parent_registration_screen.dart';
@@ -24,6 +25,9 @@ import 'ui/screens/clinician/assigned_children_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await UserSession.instance.init();
+  if (UserSession.instance.currentToken != null) {
+    await ChildSession.instance.loadChildren();
+  }
   runApp(const PoshanSaathiApp());
 }
 

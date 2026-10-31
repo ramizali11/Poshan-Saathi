@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/core/services/child_session.dart';
 import 'package:frontend/core/widgets/app_bottom_nav.dart';
 import 'parent_dashboard_screen.dart';
 import 'meal_planner_screen.dart';
@@ -22,6 +23,7 @@ class _ParentMainScaffoldState extends State<ParentMainScaffold> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    ChildSession.instance.loadChildren();
   }
 
   @override

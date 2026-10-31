@@ -35,6 +35,7 @@ from ..schemas import (
     AuthResponse,
     OnboardingStep1Request,
     ChildCreateRequest,
+    ChildUpdateRequest,
     ChildrenBatchCreateRequest,
     ChildResponse,
 )
@@ -1749,4 +1750,97 @@ def add_single_child(
             weight=req.weight,
             gender=clean_gender,
             created_at=now_str
+        )
+
+@router.patch("/children/{child_id}", response_model=ChildResponse)
+@router.put("/children/{child_id}", response_model=ChildResponse)
+@children_router.patch("/{child_id}", response_model=ChildResponse)
+@children_router.put("/{child_id}", response_model=ChildResponse)
+def update_child(
+    child_id: int,
+    req: ChildUpdateRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Updates an existing child's information (such as weight, name, dob, gender).
+    Enforces strict multi-tenancy: only the authenticated parent can update their own child.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, parent_id, name, dob, weight, gender, created_at FROM children WHERE id = ? AND parent_id = ?", (child_id, parent_id))
+        child_row = cursor.fetchone()
+        if not child_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Child profile not found or does not belong to the authenticated caregiver."
+            )
+
+        updates = []
+        params = []
+
+        if req.name is not None and req.name.strip():
+            updates.append("name = ?")
+            params.append(req.name.strip())
+
+        if req.dob is not None and req.dob.strip():
+            updates.append("dob = ?")
+            params.append(req.dob.strip())
+
+        if req.weight is not None:
+            if req.weight <= 0 or req.weight > 100:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please enter a valid weight in kg (between 0.5 and 100).")
+            updates.append("weight = ?")
+            params.append(float(req.weight))
+
+        if req.gender is not None and req.gender.strip():
+            clean_gender = req.gender.strip()
+            if clean_gender not in ("Boy", "Girl", "Other"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Child gender must be 'Boy', 'Girl', or 'Other'.")
+            updates.append("gender = ?")
+            params.append(clean_gender)
+
+        now_str = datetime.now(timezone.utc).isoformat()
+        updates.append("updated_at = ?")
+        params.append(now_str)
+
+        if updates:
+            params.extend([child_id, parent_id])
+            cursor.execute(f"UPDATE children SET {', '.join(updates)} WHERE id = ? AND parent_id = ?", tuple(params))
+
+        # Also mirror into child_profiles if exists
+        child_profile_updates = ["created_at = created_at"]
+        cp_params = []
+        if req.name is not None and req.name.strip():
+            child_profile_updates.append("name = ?")
+            cp_params.append(req.name.strip())
+        if req.dob is not None and req.dob.strip():
+            child_profile_updates.append("dob = ?")
+            cp_params.append(req.dob.strip())
+        if req.weight is not None:
+            child_profile_updates.append("current_weight_kg = ?")
+            cp_params.append(float(req.weight))
+        if req.gender is not None and req.gender.strip():
+            child_profile_updates.append("gender = ?")
+            cp_params.append(req.gender.strip())
+        if len(child_profile_updates) > 1:
+            cp_params.extend([parent_id, child_row["name"]])
+            cursor.execute(f"UPDATE child_profiles SET {', '.join(child_profile_updates)} WHERE user_id = ? AND name = ?", tuple(cp_params))
+
+        conn.commit()
+
+        # Fetch updated row
+        cursor.execute("SELECT id, parent_id, name, dob, weight, gender, created_at, updated_at FROM children WHERE id = ?", (child_id,))
+        updated_row = cursor.fetchone()
+
+        return ChildResponse(
+            id=updated_row["id"],
+            parent_id=updated_row["parent_id"],
+            name=updated_row["name"],
+            dob=updated_row["dob"],
+            weight=updated_row["weight"],
+            gender=updated_row["gender"],
+            created_at=updated_row["created_at"],
+            updated_at=updated_row["updated_at"]
         )

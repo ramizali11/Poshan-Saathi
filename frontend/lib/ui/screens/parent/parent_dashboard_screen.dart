@@ -5,8 +5,11 @@ import 'package:frontend/core/theme/app_typography.dart';
 import 'package:frontend/core/widgets/status_badge.dart';
 import 'package:frontend/core/widgets/metric_tile.dart';
 import 'package:frontend/core/models/user_model.dart';
+import 'package:frontend/core/models/child_model.dart';
 import 'package:frontend/core/services/user_session.dart';
-import 'package:frontend/core/data/mock_data.dart';   
+import 'package:frontend/core/services/child_session.dart';
+import 'package:frontend/core/widgets/child_selector_widget.dart';
+import 'package:frontend/core/widgets/missing_field_dialogs.dart';   
 
 class ParentDashboardScreen extends StatefulWidget {
   final VoidCallback? onNavigateToMeals;
@@ -25,8 +28,6 @@ class ParentDashboardScreen extends StatefulWidget {
 }
 
 class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
-  final ChildProfile _child = MockData.defaultChild;
-
   void _showUserProfileModal(BuildContext context, UserModel? user) {
     showModalBottomSheet(
       context: context,
@@ -146,6 +147,16 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (phone != null && phone.isNotEmpty)
                     ? '+91 $phone'
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'phone',
+                    fieldTitle: 'Mobile Number',
+                    hintText: 'e.g. 9876543210',
+                    keyboardType: TextInputType.phone,
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -162,6 +173,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (dob != null && dob.isNotEmpty)
                     ? dob
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'dob',
+                    fieldTitle: 'Date of Birth',
+                    hintText: 'YYYY-MM-DD',
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -170,6 +190,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (address != null && address.isNotEmpty)
                     ? '$address${city != null && city.isNotEmpty ? ", $city" : ""}'
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'address',
+                    fieldTitle: 'Residential Address',
+                    hintText: 'Street / Society / Area',
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -178,6 +207,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (district != null || state != null)
                     ? '${district ?? ""}${district != null && state != null ? ", " : ""}${state ?? ""}'
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'district',
+                    fieldTitle: 'District',
+                    hintText: 'e.g. Ahmedabad',
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -186,6 +224,16 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (pinCode != null && pinCode.isNotEmpty)
                     ? pinCode
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'pin_code',
+                    fieldTitle: 'Postal PIN Code',
+                    hintText: 'e.g. 380015',
+                    keyboardType: TextInputType.number,
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -253,8 +301,12 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
     required IconData icon,
     required String label,
     required String value,
+    VoidCallback? onAdd,
   }) {
+    final isNotAdded = value == 'Not added' || value.isEmpty;
+
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           padding: const EdgeInsets.all(8),
@@ -276,13 +328,54 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                   fontSize: 11,
                 ),
               ),
-              Text(
-                value,
-                style: AppTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+              if (isNotAdded && onAdd != null)
+                Row(
+                  children: [
+                    Text(
+                      'Not added',
+                      style: AppTypography.bodySmall.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: onAdd,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryContainer,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.add_rounded, size: 12, color: AppColors.primaryDark),
+                            SizedBox(width: 2),
+                            Text(
+                              'Add',
+                              style: TextStyle(
+                                color: AppColors.primaryDark,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Text(
+                  value,
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isNotAdded ? AppColors.textMuted : AppColors.textPrimary,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -332,37 +425,8 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
           ],
         ),
         actions: [
-          // Child Switcher Pill
-          GestureDetector(
-            onTap: () => _showUserProfileModal(context, UserSession.instance.currentUser),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.primaryContainer.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.primary.withOpacity(0.2)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const CircleAvatar(
-                    radius: 10,
-                    backgroundColor: AppColors.primary,
-                    child: Text('AS', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Aarav (14m)',
-                    style: AppTypography.labelSmall.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryDark,
-                    ),
-                  ),
-                  const Icon(Icons.arrow_drop_down_rounded, size: 18, color: AppColors.primaryDark),
-                ],
-              ),
-            ),
-          ),
+          // Dynamic Child Switcher Pill
+          const ChildSelectorPill(),
           const SizedBox(width: 8),
           // Notification Bell
           IconButton(
@@ -430,9 +494,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                                 style: AppTypography.gujaratiSubtitle.copyWith(color: AppColors.secondary),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                "Let's take a gentle, healthy step toward Aarav's growth milestone today.",
-                                style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                              ValueListenableBuilder<ChildModel?>(
+                                valueListenable: ChildSession.instance.selectedChildNotifier,
+                                builder: (context, activeChild, _) {
+                                  final childName = activeChild != null ? activeChild.name : 'your child';
+                                  return Text(
+                                    "Let's take a gentle, healthy step toward $childName's growth milestone today.",
+                                    style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -475,140 +545,272 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Hero Child Growth Card (#ceeace background)
+            // Hero Child Growth Card
             SafeLayoutBox(
               name: 'HeroGrowthCard',
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryContainer.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              child: ValueListenableBuilder<ChildModel?>(
+                valueListenable: ChildSession.instance.selectedChildNotifier,
+                builder: (context, activeChild, _) {
+                  if (activeChild == null) {
+                    return Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryContainer.withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: const BoxDecoration(
+                              color: AppColors.primaryContainer,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.child_care_rounded, size: 36, color: AppColors.primaryDark),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No Child Profile Registered',
+                            style: AppTypography.headline3.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Add your child to unlock personalized WHO growth curve tracking, age-appropriate nutrition charts, and health alerts.',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(height: 14),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
+                            onPressed: () => showAddNewChildDialog(context),
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: const Text('+ Register Child Profile'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final isGirl = activeChild.gender.toLowerCase() == 'girl';
+                  final ageLabel = activeChild.ageDisplay.isNotEmpty ? activeChild.ageDisplay : 'DOB: ${activeChild.dob}';
+
+                  return Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: isGirl ? Colors.pink.shade50.withOpacity(0.5) : AppColors.primaryContainer.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: isGirl ? Colors.pink.shade200 : AppColors.primary.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CircleAvatar(
-                          radius: 20,
-                          backgroundColor: AppColors.primary,
-                          child: const Text('14m', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: isGirl ? Colors.pink.shade400 : AppColors.primary,
+                              child: Text(
+                                activeChild.shortInitials,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Flexible(
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          activeChild.name,
+                                          style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Icon(Icons.verified_rounded, color: AppColors.primary, size: 16),
+                                    ],
+                                  ),
+                                  Text(
+                                    '${activeChild.gender} • $ageLabel • Born ${activeChild.dob}',
+                                    style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textSecondary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            StatusBadge(
+                              label: activeChild.hasWeight ? 'WHO Validated' : 'Weight Pending',
+                              status: activeChild.hasWeight ? BadgeStatus.normal : BadgeStatus.warning,
+                              icon: activeChild.hasWeight ? Icons.verified_rounded : Icons.scale_rounded,
+                              isSmall: true,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 3 Metric Tiles
+                        Row(
+                          children: [
+                            // Weight Tile with [+ Add] if missing
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => showAddChildWeightDialog(context, activeChild),
+                                borderRadius: BorderRadius.circular(14),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: activeChild.hasWeight ? Colors.white : Colors.amber.shade50,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: activeChild.hasWeight ? AppColors.divider : Colors.amber.shade300,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.scale_rounded,
+                                            size: 16,
+                                            color: activeChild.hasWeight ? AppColors.primary : Colors.amber.shade800,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              'WEIGHT',
+                                              style: AppTypography.labelSmall.copyWith(
+                                                color: AppColors.textMuted,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      if (activeChild.hasWeight)
+                                        Text(
+                                          '${activeChild.weight} kg',
+                                          style: AppTypography.headline2.copyWith(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        )
+                                      else
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'Not added',
+                                              style: AppTypography.bodySmall.copyWith(
+                                                color: Colors.amber.shade900,
+                                                fontStyle: FontStyle.italic,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.primary,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: const Text(
+                                                '+ Add',
+                                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        activeChild.hasWeight ? 'Tap to update' : 'Tap to record',
+                                        style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.textSecondary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: MetricTile(
+                                icon: Icons.straighten_rounded,
+                                label: 'GROWTH',
+                                value: activeChild.ageDisplay.isNotEmpty ? activeChild.ageDisplay : 'Active',
+                                subtext: 'WHO Reference',
+                                iconColor: AppColors.secondary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: MetricTile(
+                                icon: Icons.badge_outlined,
+                                label: 'CHILD ID',
+                                value: '#${activeChild.id}',
+                                subtext: 'poshan_saathi.db',
+                                iconColor: AppColors.tertiaryDark,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // ASHA & Chart Link Row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.volunteer_activism_rounded, size: 16, color: AppColors.primary),
+                                  const SizedBox(width: 6),
+                                  Expanded(
                                     child: Text(
-                                      _child.name,
-                                      style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+                                      'Anganwadi Care • Sector 4',
+                                      style: AppTypography.bodySmall.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.primaryDark,
+                                      ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 16),
                                 ],
                               ),
-                              Text(
-                                _child.feedingStage,
-                                style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textSecondary),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        StatusBadge(
-                          label: 'WHO Green Zone',
-                          status: BadgeStatus.normal,
-                          icon: Icons.verified_rounded,
-                          isSmall: true,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 3 Metric Tiles
-                    Row(
-                      children: [
-                        Expanded(
-                          child: MetricTile(
-                            icon: Icons.scale_rounded,
-                            label: 'WEIGHT',
-                            value: '${_child.currentWeightKg} kg',
-                            subtext: '+0.3kg / 30d',
-                            iconColor: AppColors.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: MetricTile(
-                            icon: Icons.straighten_rounded,
-                            label: 'LENGTH',
-                            value: '${_child.currentLengthCm} cm',
-                            subtext: '50th Percentile',
-                            iconColor: AppColors.secondary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: MetricTile(
-                            icon: Icons.calendar_today_rounded,
-                            label: 'MEASURED',
-                            value: '12 Feb',
-                            subtext: 'By ASHA worker',
-                            iconColor: AppColors.tertiaryDark,
-                          ),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton.icon(
+                              onPressed: () {
+                                if (widget.onNavigateToGrowth != null) {
+                                  widget.onNavigateToGrowth!();
+                                } else {
+                                  Navigator.pushNamed(context, '/growth');
+                                }
+                              },
+                              icon: const Icon(Icons.show_chart_rounded, size: 16),
+                              label: const Text('View Chart >', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-
-                    // ASHA & Chart Link Row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              const Icon(Icons.volunteer_activism_rounded, size: 16, color: AppColors.primary),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  'Kavita Ben • Anganwadi Sector 4',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.primaryDark,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        TextButton.icon(
-                          onPressed: () {
-                            if (widget.onNavigateToGrowth != null) {
-                              widget.onNavigateToGrowth!();
-                            } else {
-                              Navigator.pushNamed(context, '/growth');
-                            }
-                          },
-                          icon: const Icon(Icons.show_chart_rounded, size: 16),
-                          label: const Text('View Chart >', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 16),

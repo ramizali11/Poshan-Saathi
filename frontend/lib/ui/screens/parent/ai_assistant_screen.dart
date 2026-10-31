@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/core/theme/app_colors.dart';
 import 'package:frontend/core/theme/app_typography.dart';
+import 'package:frontend/core/models/child_model.dart';
+import 'package:frontend/core/services/child_session.dart';
+import 'package:frontend/core/widgets/child_selector_widget.dart';
 
 class AiAssistantScreen extends StatefulWidget {
   const AiAssistantScreen({super.key});
@@ -14,243 +17,271 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isRecording = false;
 
-  final List<Map<String, dynamic>> _messages = [
-    {
-      'sender': 'user',
-      'time': '10:42 AM',
-      'text': 'Can I give lemon juice with moong dal khichdi? How does it help?',
-    },
-    {
-      'sender': 'ai',
-      'time': '10:42 AM',
-      'text':
-          'Yes, absolutely! Plant-based non-heme iron from moong dal needs Vitamin C for up to 3x better absorption. Squeezing 3–4 drops of fresh lemon or adding a pinch of fresh amla paste right before feeding helps Aarav\'s body absorb the iron effortlessly without irritating his tummy.',
-      'card': {
-        'title': 'Vitamin C + Non-Heme Fe Synergy',
-        'sub': '+300% Bio-availability • Prevents nutritional anemia',
-        'source': 'ICMR-NIN 2024 Infant Feeding Guidelines',
+  late List<Map<String, dynamic>> _messages;
+
+  @override
+  void initState() {
+    super.initState();
+    final child = ChildSession.instance.activeChild;
+    final childName = child?.name ?? 'Child';
+    final childAge = child?.ageDisplay ?? '14m';
+
+    _messages = [
+      {
+        'sender': 'user',
+        'time': '10:42 AM',
+        'text': 'Can I give lemon juice with moong dal khichdi? How does it help?',
       },
-      'audioAvailable': true,
-    },
-    {
-      'sender': 'user',
-      'time': '10:45 AM',
-      'text': 'Aarav refused coarse texture yesterday, should I liquidize it again?',
-    },
-    {
-      'sender': 'ai',
-      'time': '10:45 AM',
-      'text':
-          'Stage 3 Transition (12-18m): At 14 months, avoid blending into a liquid soup. Instead, try fork-mashing softly with warm dal water or half a teaspoon of desi cow ghee. Gentle lumps support essential chewing oral-motor development and speech muscles. It is completely normal for toddlers to need 8–10 repeated calm exposures to new textures!',
-      'audioAvailable': true,
-    },
-  ];
+      {
+        'sender': 'ai',
+        'time': '10:42 AM',
+        'text':
+            'Yes, absolutely! Plant-based non-heme iron from moong dal needs Vitamin C for up to 3x better absorption. Squeezing 3–4 drops of fresh lemon or adding a pinch of fresh amla paste right before feeding helps $childName\'s body absorb the iron effortlessly without irritating their tummy.',
+        'card': {
+          'title': 'Vitamin C + Non-Heme Fe Synergy',
+          'sub': '+300% Bio-availability • Prevents nutritional anemia',
+          'source': 'ICMR-NIN Infant Feeding Guidelines',
+        },
+        'audioAvailable': true,
+      },
+      {
+        'sender': 'user',
+        'time': '10:45 AM',
+        'text': '$childName refused coarse texture yesterday, should I liquidize it again?',
+      },
+      {
+        'sender': 'ai',
+        'time': '10:45 AM',
+        'text':
+            'Milestone Transition ($childAge): At $childAge, avoid blending into a liquid soup. Instead, try fork-mashing softly with warm dal water or half a teaspoon of desi cow ghee. Gentle lumps support essential chewing oral-motor development and speech muscles. It is completely normal for children to need 8–10 repeated calm exposures to new textures!',
+        'audioAvailable': true,
+      },
+    ];
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                color: AppColors.primaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.auto_awesome, color: AppColors.primaryDark, size: 18),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'PoshanSaathi AI (પોષણ સલાહકાર)',
-                    style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    'Aarav Shah (14m) • Active Context',
-                    style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.textSecondary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.volume_up_outlined),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Gujarati speech playback activated.')),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.restart_alt_rounded),
-            onPressed: () {
-              setState(() {
-                _messages.clear();
-              });
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Clinical Protocol Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: AppColors.statusBlueContainer,
-            child: Row(
-              children: [
-                const Icon(Icons.verified_user_rounded, size: 16, color: AppColors.statusBlue),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'ICMR-NIN & WHO Aligned Infant Guidance Ver 2.4 — Evidence-based nutritional insights. Does not replace emergency care.',
-                    style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.statusBlue),
-                  ),
-                ),
-              ],
-            ),
-          ),
+    return ValueListenableBuilder<ChildModel?>(
+      valueListenable: ChildSession.instance.selectedChildNotifier,
+      builder: (context, activeChild, _) {
+        final childName = activeChild?.name ?? 'Child';
+        final childAge = activeChild?.ageDisplay ?? 'Milestone';
 
-          // Chat Messages List
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final m = _messages[index];
-                final isUser = m['sender'] == 'user';
-                return _buildMessageBubble(m, isUser);
-              },
-            ),
-          ),
-
-          // Care Team Escalation Suggestion Cards
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: Row(
               children: [
-                Expanded(
-                  child: _escalationCard(
-                    initials: 'MD',
-                    name: 'Dr. Meera Patel',
-                    role: 'Pediatric Nutritionist',
-                    slot: 'Slot: 2:30 PM',
-                    color: AppColors.secondary,
-                    onTap: () => Navigator.pushNamed(context, '/clinician_dashboard'),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryContainer,
+                    shape: BoxShape.circle,
                   ),
+                  child: const Icon(Icons.auto_awesome, color: AppColors.primaryDark, size: 18),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _escalationCard(
-                    initials: 'KB',
-                    name: 'Kavita Ben',
-                    role: 'Anganwadi Sector 4',
-                    slot: 'Available on Chat',
-                    color: AppColors.primary,
-                    onTap: () => Navigator.pushNamed(context, '/anganwadi_connect'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'PoshanSaathi AI (પોષણ સલાહકાર)',
+                        style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        activeChild != null
+                            ? '$childName ($childAge) • Active Context'
+                            : 'AI Nutritional Guidance',
+                        style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
+            actions: [
+              const ChildSelectorPill(isCompact: true),
+              IconButton(
+                icon: const Icon(Icons.volume_up_outlined),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gujarati speech playback activated.')),
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.restart_alt_rounded),
+                onPressed: () {
+                  setState(() {
+                    _messages.clear();
+                  });
+                },
+              ),
+            ],
           ),
+          body: Column(
+            children: [
+              // Clinical Protocol Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: AppColors.statusBlueContainer,
+                child: Row(
+                  children: [
+                    const Icon(Icons.verified_user_rounded, size: 16, color: AppColors.statusBlue),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'ICMR-NIN & WHO Aligned Infant Guidance — Evidence-based nutritional insights for $childName. Does not replace emergency care.',
+                        style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.statusBlue),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-          // Quick Suggestion Chips
-          SizedBox(
-            height: 38,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                _suggestionChip('Iron-rich local foods (લોહતત્વ આહાર)'),
-                _suggestionChip('Safe textures at 14m'),
-                _suggestionChip('Explain WHO growth curve'),
-                _suggestionChip('Weekly Gujarati meal plan'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
+              // Chat Messages List
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    final m = _messages[index];
+                    final isUser = m['sender'] == 'user';
+                    return _buildMessageBubble(m, isUser);
+                  },
+                ),
+              ),
 
-          // Input Bar with Voice & Photo
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: AppColors.divider)),
-            ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.photo_camera_outlined, color: AppColors.primary),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Meal Photo Nutrient Inspector ready!')),
-                      );
-                    },
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      decoration: InputDecoration(
-                        hintText: 'Ask about baby foods, recipes, growth...',
-                        hintStyle: AppTypography.bodySmall.copyWith(fontSize: 12),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: const BorderSide(color: AppColors.border),
+              // Care Team Escalation Suggestion Cards
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _escalationCard(
+                        initials: 'MD',
+                        name: 'Dr. Meera Patel',
+                        role: 'Pediatric Nutritionist',
+                        slot: 'Slot: 2:30 PM',
+                        color: AppColors.secondary,
+                        onTap: () => Navigator.pushNamed(context, '/clinician_dashboard'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _escalationCard(
+                        initials: 'KB',
+                        name: 'Kavita Ben',
+                        role: 'Anganwadi Sector 4',
+                        slot: 'Available on Chat',
+                        color: AppColors.primary,
+                        onTap: () => Navigator.pushNamed(context, '/anganwadi_connect'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Quick Suggestion Chips
+              SizedBox(
+                height: 38,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    _suggestionChip('Iron-rich local foods (લોહતત્વ આહાર)'),
+                    _suggestionChip('Safe textures for $childName ($childAge)'),
+                    _suggestionChip('Explain WHO growth curve'),
+                    _suggestionChip('Weekly Gujarati meal plan'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Input Bar with Voice & Photo
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: AppColors.divider)),
+                ),
+                child: SafeArea(
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.photo_camera_outlined, color: AppColors.primary),
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Meal Photo Nutrient Inspector ready!')),
+                          );
+                        },
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          decoration: InputDecoration(
+                            hintText: 'Ask about baby foods, recipes, growth for $childName...',
+                            hintStyle: AppTypography.bodySmall.copyWith(fontSize: 12),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: const BorderSide(color: AppColors.border),
+                            ),
+                            filled: true,
+                            fillColor: AppColors.background,
+                          ),
+                          onSubmitted: (txt) => _sendMessage(txt, childName, childAge),
                         ),
-                        filled: true,
-                        fillColor: AppColors.background,
                       ),
-                      onSubmitted: _sendMessage,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _isRecording = !_isRecording);
-                      if (_isRecording) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Listening in Gujarati & English (Speech-to-Text active)...')),
-                        );
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: _isRecording ? AppColors.statusRed : AppColors.primaryContainer,
-                        shape: BoxShape.circle,
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() => _isRecording = !_isRecording);
+                          if (_isRecording) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Listening in Gujarati & English (Speech-to-Text active)...')),
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: _isRecording ? AppColors.statusRed : AppColors.primaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            _isRecording ? Icons.mic : Icons.mic_none_rounded,
+                            color: _isRecording ? Colors.white : AppColors.primaryDark,
+                            size: 20,
+                          ),
+                        ),
                       ),
-                      child: Icon(
-                        _isRecording ? Icons.mic : Icons.mic_none_rounded,
-                        color: _isRecording ? Colors.white : AppColors.primaryDark,
-                        size: 20,
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: const Icon(Icons.arrow_upward_rounded, color: AppColors.primary),
+                        onPressed: () => _sendMessage(_textController.text, childName, childAge),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.arrow_upward_rounded, color: AppColors.primary),
-                    onPressed: () => _sendMessage(_textController.text),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -409,7 +440,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Widget _suggestionChip(String text) {
     return GestureDetector(
-      onTap: () => _sendMessage(text),
+      onTap: () {
+        final child = ChildSession.instance.activeChild;
+        _sendMessage(text, child?.name ?? 'Child', child?.ageDisplay ?? 'Milestone');
+      },
       child: Container(
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -426,7 +460,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     );
   }
 
-  void _sendMessage(String text) {
+  void _sendMessage(String text, String childName, String childAge) {
     if (text.trim().isEmpty) return;
     setState(() {
       _messages.add({
@@ -438,17 +472,19 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         'sender': 'ai',
         'time': 'Just now',
         'text':
-            'Great question! For a 14-month toddler like Aarav, nutritional consistency is key. Ensure you pair healthy fats (desi cow ghee) with grains for sustained energy and brain development.',
+            'Great question! For $childName ($childAge), nutritional consistency is key. Ensure you pair healthy fats (desi cow ghee) with grains for sustained energy and brain development.',
         'audioAvailable': true,
       });
     });
     _textController.clear();
     Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 }

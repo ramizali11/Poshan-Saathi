@@ -54,6 +54,40 @@ class ChildModel {
     };
   }
 
+  bool get hasWeight => weight != null && weight! > 0;
+  String get weightDisplay => hasWeight ? '${weight!.toStringAsFixed(1)} kg' : 'Not added';
+
+  String get shortInitials {
+    if (name.trim().isEmpty) return 'C';
+    final parts = name.trim().split(' ');
+    if (parts.length > 1 && parts[1].isNotEmpty) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();
+  }
+
+  ChildModel copyWith({
+    int? id,
+    int? parentId,
+    String? name,
+    String? dob,
+    double? weight,
+    String? gender,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return ChildModel(
+      id: id ?? this.id,
+      parentId: parentId ?? this.parentId,
+      name: name ?? this.name,
+      dob: dob ?? this.dob,
+      weight: weight ?? this.weight,
+      gender: gender ?? this.gender,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
   /// Calculates human-readable age from Date of Birth
   String get ageDisplay {
     try {
