@@ -140,3 +140,50 @@ class HeightMeasurementResponse(BaseModel):
     created_at: str
     updated_at: str
     diff_from_previous: Optional[float] = None
+
+
+# ============================================================================
+# AI CHATBOT SCHEMAS
+# ============================================================================
+
+class ChatSendMessageRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000, description="Parent's message/question")
+    conversation_id: Optional[int] = Field(None, description="Active conversation ID, or None to start a new conversation")
+    child_id: Optional[int] = Field(None, description="Active child ID to personalize guidance")
+
+class ChatNewConversationRequest(BaseModel):
+    child_id: Optional[int] = Field(None, description="Active child ID to associate with the new conversation")
+    title: Optional[str] = Field("Nutrition Advice", max_length=100, description="Conversation title")
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    conversation_id: int
+    sender_role: str
+    content: str
+    created_at: str
+
+class ChatSendMessageResponse(BaseModel):
+    conversation_id: int
+    message_id: int
+    reply: str
+    created_at: str
+    child_id: Optional[int] = None
+    child_name: Optional[str] = None
+
+class ChatConversationSummary(BaseModel):
+    id: int
+    title: str
+    child_id: Optional[int] = None
+    child_name: Optional[str] = None
+    last_message: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+class ChatConversationDetail(BaseModel):
+    id: int
+    title: str
+    child_id: Optional[int] = None
+    child_name: Optional[str] = None
+    created_at: str
+    updated_at: str
+    messages: List[ChatMessageResponse] = []

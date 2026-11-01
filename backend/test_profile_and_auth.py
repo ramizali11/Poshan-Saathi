@@ -817,5 +817,149 @@ class TestAuthAndProfile(unittest.TestCase):
 
         print("[OK] Test 18: Child height measurements, diff calculations, and multi-tenant isolation verified.")
 
+    def test_19_ai_chatbot_endpoints(self):
+        """
+        Verifies:
+        - Child & caregiver context extraction for AI system prompt.
+        - Clinical safety instructions: Honey ban for <12m, choking hazard warnings, non-medical disclaimer.
+        - Personalization: Child name, weight, height, and growth diff injected.
+        - Conversation creation (POST /api/chat/new).
+        - Message sending & persistence in SQLite (POST /api/chat/send).
+        - Conversation history retrieval (GET /api/chat/history).
+        - Message detail retrieval (GET /api/chat/history/{id}).
+        - Conversation deletion (DELETE /api/chat/history/{id}).
+        - Multi-tenant isolation between caregivers (404 / no cross-account leaks).
+        """
+        import asyncio
+        from unittest.mock import patch, AsyncMock
+        from app.routers.chat import (
+            send_chat_message,
+            create_new_conversation,
+            get_chat_history,
+            get_conversation_messages,
+            delete_conversation,
+        )
+        from app.schemas import (
+            ChatSendMessageRequest,
+            ChatNewConversationRequest,
+        )
+        from app.ai_service import get_child_and_parent_context, build_system_prompt
+
+        ts = int(datetime.now().timestamp())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Vikram Rao', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p19_{ts}@gmail.com", now))
+            parent_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Other Parent 19', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p19_other_{ts}@gmail.com", now))
+            other_parent_id = cursor.lastrowid
+
+            # Add child for Vikram
+            cursor.execute("""
+                INSERT INTO children (parent_id, name, dob, weight, gender, created_at)
+                VALUES (?, 'Aarohi', '2025-06-10', 8.5, 'Girl', ?)
+            """, (parent_id, now))
+            child_id = cursor.lastrowid
+
+            # Add height measurements
+            cursor.execute("""
+                INSERT INTO child_height_measurements (child_id, parent_id, height_cm, measurement_date, created_at, updated_at)
+                VALUES (?, ?, 71.0, '2026-02-01', ?, ?)
+            """, (child_id, parent_id, now, now))
+            cursor.execute("""
+                INSERT INTO child_height_measurements (child_id, parent_id, height_cm, measurement_date, created_at, updated_at)
+                VALUES (?, ?, 72.8, '2026-03-01', ?, ?)
+            """, (child_id, parent_id, now, now))
+            conn.commit()
+
+        token_parent = generate_token(parent_id, None)
+        token_other = generate_token(other_parent_id, None)
+        auth_parent = f"Bearer {token_parent}"
+        auth_other = f"Bearer {token_other}"
+
+        # 1. Test context extraction & prompt generation
+        ctx = get_child_and_parent_context(user_id=parent_id, child_id=child_id)
+        self.assertEqual(ctx["parent_name"], "Vikram Rao")
+        self.assertEqual(ctx["child_name"], "Aarohi")
+        self.assertIn("8.5 kg", ctx["weight_display"])
+        self.assertIn("72.8 cm", ctx["height_display"])
+        self.assertIn("+1.8 cm", ctx["recent_growth"])
+
+        prompt = build_system_prompt(ctx)
+        self.assertIn("Strictly NEVER recommend honey", prompt)
+        self.assertIn("botulism", prompt.lower())
+        self.assertIn("choking hazards", prompt.lower())
+        self.assertIn("Vikram Rao", prompt)
+        self.assertIn("Aarohi", prompt)
+        self.assertIn("72.8 cm", prompt)
+
+        # 2. Test create_new_conversation
+        conv = create_new_conversation(
+            req=ChatNewConversationRequest(child_id=child_id, title="Aarohi Nutrition Plan"),
+            authorization=auth_parent
+        )
+        self.assertEqual(conv.title, "Aarohi Nutrition Plan")
+        self.assertEqual(conv.child_name, "Aarohi")
+        conv_id = conv.id
+
+        # 3. Test send_chat_message with mocked AI response
+        with patch("app.routers.chat.generate_ai_chat_response", new_callable=AsyncMock) as mock_ai:
+            mock_ai.return_value = "For 9-month-old Aarohi, introduce well-cooked mashed dal khichdi."
+            send_res = asyncio.run(send_chat_message(
+                req=ChatSendMessageRequest(
+                    message="What are good lunch options for Aarohi?",
+                    conversation_id=conv_id,
+                    child_id=child_id
+                ),
+                authorization=auth_parent
+            ))
+            self.assertEqual(send_res.conversation_id, conv_id)
+            self.assertEqual(send_res.reply, "For 9-month-old Aarohi, introduce well-cooked mashed dal khichdi.")
+            self.assertEqual(send_res.child_name, "Aarohi")
+
+        # 4. Check conversation history
+        history = get_chat_history(authorization=auth_parent)
+        self.assertTrue(len(history) >= 1)
+        self.assertEqual(history[0].id, conv_id)
+        self.assertIn("khichdi", history[0].last_message.lower())
+
+        # 5. Check conversation messages
+        detail = get_conversation_messages(conversation_id=conv_id, authorization=auth_parent)
+        self.assertEqual(detail.id, conv_id)
+        self.assertEqual(len(detail.messages), 2)
+        self.assertEqual(detail.messages[0].sender_role, "user")
+        self.assertEqual(detail.messages[1].sender_role, "assistant")
+
+        # 6. Multi-tenant isolation: other parent cannot view or delete
+        other_history = get_chat_history(authorization=auth_other)
+        self.assertNotIn(conv_id, [c.id for c in other_history])
+
+        with self.assertRaises(HTTPException) as err:
+            get_conversation_messages(conversation_id=conv_id, authorization=auth_other)
+        self.assertEqual(err.exception.status_code, 404)
+
+        with self.assertRaises(HTTPException) as err:
+            delete_conversation(conversation_id=conv_id, authorization=auth_other)
+        self.assertEqual(err.exception.status_code, 404)
+
+        # 7. Delete conversation
+        del_res = delete_conversation(conversation_id=conv_id, authorization=auth_parent)
+        self.assertTrue(del_res.success)
+
+        # Confirm deleted
+        with self.assertRaises(HTTPException) as err:
+            get_conversation_messages(conversation_id=conv_id, authorization=auth_parent)
+        self.assertEqual(err.exception.status_code, 404)
+
+        print("[OK] Test 19: AI chatbot endpoints, context injection, clinical safety, and multi-tenant isolation verified.")
+
 if __name__ == "__main__":
     unittest.main()

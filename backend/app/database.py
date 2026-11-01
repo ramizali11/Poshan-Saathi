@@ -270,6 +270,39 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_height_parent_id ON child_height_measurements(parent_id);
         """)
 
+
+        # Create chat_conversations table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                child_id INTEGER,
+                title TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE SET NULL
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_conv_user_id ON chat_conversations(user_id);
+        """)
+
+        # Create chat_messages table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                sender_role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_msg_conv_id ON chat_messages(conversation_id);
+        """)
+
         conn.commit()
         print(f"[DB] SQLite database initialized at: {DB_PATH}")
 

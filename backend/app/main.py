@@ -20,7 +20,7 @@ dotenv.load_dotenv(backend_dir / ".env")
 dotenv.load_dotenv(root_dir / ".env")
 
 from .database import init_db
-from .routers import auth
+from .routers import auth, chat
 
 async def keep_alive_task():
     """
@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="PoshanSaathi - Child Nutrition API",
-    description="Backend API for PoshanSaathi Child Nutrition Care platform with SQLite authentication.",
+    description="Backend API for PoshanSaathi Child Nutrition Care platform with SQLite authentication and AI Chatbot.",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -91,6 +91,8 @@ app.include_router(auth.onboarding_router, prefix="/api")
 app.include_router(auth.onboarding_router, prefix="")
 app.include_router(auth.children_router, prefix="/api")
 app.include_router(auth.children_router, prefix="")
+app.include_router(chat.router, prefix="/api")
+app.include_router(chat.router, prefix="")
 
 @app.get("/")
 def root():
@@ -102,6 +104,13 @@ def root():
             "login": "POST /api/auth/login",
             "me": "GET /api/auth/me",
             "users": "GET /api/auth/users"
+        },
+        "chat_endpoints": {
+            "send": "POST /api/chat/send",
+            "new": "POST /api/chat/new",
+            "history": "GET /api/chat/history",
+            "detail": "GET /api/chat/history/{id}",
+            "delete": "DELETE /api/chat/history/{id}"
         }
     }
 
