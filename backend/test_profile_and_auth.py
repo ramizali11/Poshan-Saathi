@@ -911,9 +911,22 @@ class TestAuthAndProfile(unittest.TestCase):
         conv_id = conv.id
 
         # 3. Test send_chat_message with mocked AI response
-        with patch("app.routers.chat.generate_ai_chat_response", new_callable=AsyncMock) as mock_ai:
-            mock_ai.return_value = "For 9-month-old Aarohi, introduce well-cooked mashed dal khichdi."
-            send_res = asyncio.run(send_chat_message(
+        def run_coro(coro):
+            try:
+                while True:
+                    sub = coro.send(None)
+                    try:
+                        sub.send(None)
+                    except StopIteration:
+                        pass
+            except StopIteration as e:
+                return e.value
+
+        async def mock_generate_ai(*args, **kwargs):
+            return "For 9-month-old Aarohi, introduce well-cooked mashed dal khichdi."
+
+        with patch("app.routers.chat.generate_ai_chat_response", side_effect=mock_generate_ai):
+            send_res = run_coro(send_chat_message(
                 req=ChatSendMessageRequest(
                     message="What are good lunch options for Aarohi?",
                     conversation_id=conv_id,

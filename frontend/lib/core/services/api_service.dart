@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../models/child_model.dart';
 import '../models/height_measurement_model.dart';
+import '../models/chat_model.dart';
 import 'user_session.dart';
 
 class AuthResult {
@@ -1038,6 +1039,221 @@ class ApiService {
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('ℹ️ Could not delete height measurement: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return false;
+  }
+
+  // ===========================================================================
+  // AI CHATBOT METHODS
+  // ===========================================================================
+
+  /// Sends a message to the AI Chatbot and returns the assistant's reply.
+  Future<ChatSendResult> sendChatMessage({
+    required String message,
+    int? conversationId,
+    int? childId,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) {
+      return const ChatSendResult(
+        success: false,
+        errorMessage: 'Please log in to chat with PoshanSaathi AI.',
+      );
+    }
+
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      return const ChatSendResult(
+        success: false,
+        errorMessage: 'Message cannot be empty.',
+      );
+    }
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/send');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        'message': trimmed,
+        if (conversationId != null) 'conversation_id': conversationId,
+        if (childId != null) 'child_id': childId,
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 45));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return ChatSendResult(
+          success: true,
+          conversationId: data['conversation_id'] is int
+              ? data['conversation_id'] as int
+              : int.tryParse(data['conversation_id']?.toString() ?? ''),
+          messageId: data['message_id'] is int
+              ? data['message_id'] as int
+              : int.tryParse(data['message_id']?.toString() ?? ''),
+          reply: data['reply']?.toString() ?? '',
+          childId: data['child_id'] is int
+              ? data['child_id'] as int
+              : int.tryParse(data['child_id']?.toString() ?? ''),
+          childName: data['child_name']?.toString(),
+        );
+      } else {
+        String msg = 'Failed to get AI response (${response.statusCode})';
+        try {
+          final errJson = jsonDecode(responseBody);
+          if (errJson is Map && errJson.containsKey('detail')) {
+            msg = errJson['detail'].toString();
+          }
+        } catch (_) {}
+        return ChatSendResult(success: false, errorMessage: msg);
+      }
+    } on TimeoutException {
+      return const ChatSendResult(
+        success: false,
+        errorMessage: 'The AI service took too long to reply. Please check your connection and tap retry.',
+      );
+    } catch (e) {
+      debugPrint('ℹ️ AI chat error: $e');
+      return ChatSendResult(
+        success: false,
+        errorMessage: 'Unable to connect to nutrition assistant. Please try again.',
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Fetches all chat conversation sessions for the current authenticated caregiver.
+  Future<List<ChatConversationSummary>> fetchChatHistory() async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return const [];
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/history');
+
+      final request = await client.getUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody);
+        if (data is List) {
+          return data
+              .whereType<Map<String, dynamic>>()
+              .map((j) => ChatConversationSummary.fromJson(j))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not fetch chat history: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return const [];
+  }
+
+  /// Fetches all messages within a specific conversation.
+  Future<List<ChatMessage>> fetchChatMessages(int conversationId) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return const [];
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/history/$conversationId');
+
+      final request = await client.getUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        final rawMessages = data['messages'];
+        if (rawMessages is List) {
+          return rawMessages
+              .whereType<Map<String, dynamic>>()
+              .map((j) => ChatMessage.fromJson(j))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not fetch conversation messages: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return const [];
+  }
+
+  /// Creates a new chat conversation session.
+  Future<ChatConversationSummary?> newChatConversation({
+    int? childId,
+    String? title,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/new');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        if (childId != null) 'child_id': childId,
+        if (title != null && title.isNotEmpty) 'title': title,
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return ChatConversationSummary.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not create new chat conversation: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+  /// Deletes a chat conversation and all of its messages.
+  Future<bool> deleteChatConversation(int conversationId) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return false;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/history/$conversationId');
+
+      final request = await client.deleteUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('ℹ️ Could not delete chat conversation: $e');
     } finally {
       client.close(force: true);
     }
