@@ -21,6 +21,7 @@ dotenv.load_dotenv(root_dir / ".env")
 
 from .database import init_db
 from .routers import auth, chat
+from .ai_service import close_ai_http_client
 
 async def keep_alive_task():
     """
@@ -66,6 +67,7 @@ async def lifespan(app: FastAPI):
             await heartbeat_task
         except asyncio.CancelledError:
             pass
+        await close_ai_http_client()
         logger.info("✅ [HEARTBEAT TASK] Background task stopped successfully.")
 
 app = FastAPI(
@@ -106,6 +108,7 @@ def root():
             "users": "GET /api/auth/users"
         },
         "chat_endpoints": {
+            "stream": "POST /api/chat/stream",
             "send": "POST /api/chat/send",
             "new": "POST /api/chat/new",
             "history": "GET /api/chat/history",

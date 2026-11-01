@@ -159,3 +159,28 @@ class ChatSendResult {
   });
 }
 
+class ChatStreamEvent {
+  final String type; // 'token' | 'done' | 'error'
+  final String? delta;
+  final String? reply;
+  final int? conversationId;
+  final int? messageId;
+  final int? childId;
+  final String? childName;
+  final String? error;
+
+  const ChatStreamEvent({
+    required this.type,
+    this.delta,
+    this.reply,
+    this.conversationId,
+    this.messageId,
+    this.childId,
+    this.childName,
+    this.error,
+  });
+
+  bool get isToken => type == 'token';
+  bool get isDone => type == 'done';
+  bool get isError => type == 'error';
+}

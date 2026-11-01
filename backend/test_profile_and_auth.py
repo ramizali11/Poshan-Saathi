@@ -974,5 +974,90 @@ class TestAuthAndProfile(unittest.TestCase):
 
         print("[OK] Test 19: AI chatbot endpoints, context injection, clinical safety, and multi-tenant isolation verified.")
 
+    def test_20_ai_streaming_endpoint(self):
+        """
+        Verifies:
+        - Streaming chat endpoint (POST /api/chat/stream) validation and authorization.
+        - StreamingResponse with text/event-stream media type.
+        - Proper SSE headers (no-cache, keep-alive, no-buffering).
+        - User message persistence in SQLite upon stream initialization.
+        """
+        from app.routers.chat import stream_chat_message
+        from app.schemas import ChatSendMessageRequest
+
+        ts = int(datetime.now().timestamp())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Stream Parent 20', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p20_{ts}@gmail.com", now))
+            parent_id = cursor.lastrowid
+            cursor.execute("""
+                INSERT INTO children (parent_id, name, dob, weight, gender, created_at)
+                VALUES (?, 'Vihan', '2025-04-10', 9.0, 'Boy', ?)
+            """, (parent_id, now))
+            child_id = cursor.lastrowid
+            conn.commit()
+
+        token = generate_token(parent_id, None)
+        auth_header = f"Bearer {token}"
+
+        def run_coro(coro):
+            try:
+                while True:
+                    sub = coro.send(None)
+                    try:
+                        sub.send(None)
+                    except StopIteration:
+                        pass
+            except StopIteration as e:
+                return e.value
+
+        # 1. Unauthorized request rejected with 401
+        with self.assertRaises(HTTPException) as err:
+            run_coro(stream_chat_message(
+                req=ChatSendMessageRequest(message="Hello"),
+                authorization=None
+            ))
+        self.assertEqual(err.exception.status_code, 401)
+
+        # 2. Empty message rejected with 400
+        with self.assertRaises(HTTPException) as err:
+            run_coro(stream_chat_message(
+                req=ChatSendMessageRequest(message="   "),
+                authorization=auth_header
+            ))
+        self.assertEqual(err.exception.status_code, 400)
+
+        # 3. Valid streaming request returns StreamingResponse with proper SSE headers
+        resp = run_coro(stream_chat_message(
+            req=ChatSendMessageRequest(message="What grain is good for Vihan?", child_id=child_id),
+            authorization=auth_header
+        ))
+        self.assertEqual(resp.media_type, "text/event-stream")
+        self.assertEqual(resp.headers.get("Cache-Control"), "no-cache")
+        self.assertEqual(resp.headers.get("Connection"), "keep-alive")
+        self.assertEqual(resp.headers.get("X-Accel-Buffering"), "no")
+
+        # 4. Verify user message was persisted in SQLite
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT m.content, m.sender_role, c.child_id 
+                FROM chat_messages m
+                JOIN chat_conversations c ON m.conversation_id = c.id
+                WHERE c.user_id = ? AND m.sender_role = 'user'
+                ORDER BY m.id DESC LIMIT 1
+            """, (parent_id,))
+            saved = cursor.fetchone()
+            self.assertIsNotNone(saved)
+            self.assertEqual(saved["content"], "What grain is good for Vihan?")
+            self.assertEqual(saved["child_id"], child_id)
+
+        print("[OK] Test 20: AI streaming endpoint, SSE headers, and database persistence verified.")
+
 if __name__ == "__main__":
     unittest.main()

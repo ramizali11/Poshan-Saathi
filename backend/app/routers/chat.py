@@ -1,7 +1,9 @@
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Header, HTTPException, status
+from fastapi.responses import StreamingResponse
 from ..database import get_db
 from ..security import verify_token
 from ..schemas import (
@@ -13,7 +15,7 @@ from ..schemas import (
     ChatMessageResponse,
     GenericMessageResponse,
 )
-from ..ai_service import generate_ai_chat_response
+from ..ai_service import generate_ai_chat_response, stream_ai_chat_response
 
 logger = logging.getLogger("poshan_saathi.chat")
 
@@ -37,16 +39,16 @@ def get_authenticated_user_id(authorization: Optional[str]) -> int:
         )
     return int(payload["uid"])
 
-@router.post("/send", response_model=ChatSendMessageResponse)
-async def send_chat_message(
+@router.post("/stream")
+async def stream_chat_message(
     req: ChatSendMessageRequest,
     authorization: Optional[str] = Header(None)
 ):
     """
-    Sends a message to the PoshanSaathi Child Nutrition AI chatbot.
-    - Persists user message and AI response in SQLite.
-    - Personalizes recommendations using the selected child's verified profile & measurements.
-    - Enforces clinical safety instructions (no honey < 12m, choking hazard precautions).
+    High-performance Server-Sent Events (SSE) streaming endpoint for AI Chatbot.
+    - User message is saved immediately.
+    - AI tokens are streamed progressively as they arrive from OpenRouter.
+    - Assistant response is persisted in SQLite upon completion.
     """
     user_id = get_authenticated_user_id(authorization)
 
@@ -60,18 +62,21 @@ async def send_chat_message(
     now_str = datetime.now(timezone.utc).isoformat()
     conversation_id = req.conversation_id
     child_id = req.child_id
+    child_name: Optional[str] = None
 
     with get_db() as conn:
         cursor = conn.cursor()
 
-        # If child_id supplied, verify ownership
+        # If child_id supplied, verify ownership and get name
         if child_id is not None:
-            cursor.execute("SELECT id FROM children WHERE id = ? AND parent_id = ?", (child_id, user_id))
-            if not cursor.fetchone():
+            cursor.execute("SELECT id, name FROM children WHERE id = ? AND parent_id = ?", (child_id, user_id))
+            c_row = cursor.fetchone()
+            if not c_row:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Child profile not found or does not belong to the authenticated user."
                 )
+            child_name = c_row["name"]
 
         # Retrieve or create conversation
         if conversation_id:
@@ -94,8 +99,11 @@ async def send_chat_message(
                 )
             elif child_id is None and conv_row["child_id"] is not None:
                 child_id = conv_row["child_id"]
+                cursor.execute("SELECT name FROM children WHERE id = ?", (child_id,))
+                c_row = cursor.fetchone()
+                if c_row:
+                    child_name = c_row["name"]
         else:
-            # Generate short title from first question (max 40 chars)
             title = user_text[:40].strip()
             if len(user_text) > 40:
                 title += "..."
@@ -111,7 +119,6 @@ async def send_chat_message(
             INSERT INTO chat_messages (conversation_id, sender_role, content, created_at)
             VALUES (?, 'user', ?, ?)
         """, (conversation_id, user_text, now_str))
-        user_message_id = cursor.lastrowid
 
         # Fetch recent messages for prompt history
         cursor.execute("""
@@ -121,10 +128,178 @@ async def send_chat_message(
         """, (conversation_id,))
         rows = cursor.fetchall()
         history = [{"role": r["sender_role"], "content": r["content"]} for r in rows]
-
         conn.commit()
 
-    # Generate AI response via OpenRouter asynchronously
+    async def sse_event_generator():
+        accumulated_chunks: List[str] = []
+        is_persisted = False
+
+        try:
+            async for event in stream_ai_chat_response(
+                conversation_history=history,
+                user_id=user_id,
+                child_id=child_id
+            ):
+                event_type = event.get("type")
+
+                if event_type == "token":
+                    delta = event.get("delta", "")
+                    accumulated_chunks.append(delta)
+                    yield f"data: {json.dumps({'type': 'token', 'delta': delta})}\n\n"
+
+                elif event_type == "done":
+                    final_reply = event.get("reply") or "".join(accumulated_chunks).strip()
+                    reply_now = datetime.now(timezone.utc).isoformat()
+
+                    with get_db() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            INSERT INTO chat_messages (conversation_id, sender_role, content, created_at)
+                            VALUES (?, 'assistant', ?, ?)
+                        """, (conversation_id, final_reply, reply_now))
+                        asst_msg_id = cursor.lastrowid
+
+                        cursor.execute(
+                            "UPDATE chat_conversations SET updated_at = ? WHERE id = ?",
+                            (reply_now, conversation_id)
+                        )
+                        conn.commit()
+
+                    is_persisted = True
+                    yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation_id, 'message_id': asst_msg_id, 'reply': final_reply, 'child_id': child_id, 'child_name': child_name})}\n\n"
+                    return
+
+                elif event_type == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'error': event.get('error', 'Error generating AI response')})}\n\n"
+                    return
+
+        except Exception as e:
+            logger.error(f"[Chat Stream Router] Exception in stream generation: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': 'Streaming interrupted. Please tap retry.'})}\n\n"
+
+        finally:
+            # If the stream disconnected unexpectedly before a 'done' event, persist whatever was generated
+            if not is_persisted and accumulated_chunks:
+                try:
+                    partial_reply = "".join(accumulated_chunks).strip()
+                    if partial_reply:
+                        reply_now = datetime.now(timezone.utc).isoformat()
+                        with get_db() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("""
+                                INSERT INTO chat_messages (conversation_id, sender_role, content, created_at)
+                                VALUES (?, 'assistant', ?, ?)
+                            """, (conversation_id, partial_reply, reply_now))
+                            cursor.execute(
+                                "UPDATE chat_conversations SET updated_at = ? WHERE id = ?",
+                                (reply_now, conversation_id)
+                            )
+                            conn.commit()
+                except Exception as ex:
+                    logger.warning(f"[Chat Stream Router] Could not save partial response: {ex}")
+
+    return StreamingResponse(
+        sse_event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+@router.post("/send", response_model=ChatSendMessageResponse)
+async def send_chat_message(
+    req: ChatSendMessageRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Synchronous / completion chat endpoint.
+    - Persists user message and AI response in SQLite.
+    - Personalizes recommendations using the selected child's verified profile & measurements.
+    - Enforces clinical safety instructions (no honey < 12m, choking hazard precautions).
+    """
+    user_id = get_authenticated_user_id(authorization)
+
+    user_text = req.message.strip()
+    if not user_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Message content cannot be empty."
+        )
+
+    now_str = datetime.now(timezone.utc).isoformat()
+    conversation_id = req.conversation_id
+    child_id = req.child_id
+    child_name: Optional[str] = None
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # If child_id supplied, verify ownership and fetch name
+        if child_id is not None:
+            cursor.execute("SELECT id, name FROM children WHERE id = ? AND parent_id = ?", (child_id, user_id))
+            c_row = cursor.fetchone()
+            if not c_row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Child profile not found or does not belong to the authenticated user."
+                )
+            child_name = c_row["name"]
+
+        # Retrieve or create conversation
+        if conversation_id:
+            cursor.execute(
+                "SELECT id, user_id, child_id, title FROM chat_conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id)
+            )
+            conv_row = cursor.fetchone()
+            if not conv_row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Conversation not found or unauthorized."
+                )
+
+            # If user explicitly changed active child, update conversation's child association
+            if child_id is not None and conv_row["child_id"] != child_id:
+                cursor.execute(
+                    "UPDATE chat_conversations SET child_id = ?, updated_at = ? WHERE id = ?",
+                    (child_id, now_str, conversation_id)
+                )
+            elif child_id is None and conv_row["child_id"] is not None:
+                child_id = conv_row["child_id"]
+                cursor.execute("SELECT name FROM children WHERE id = ?", (child_id,))
+                c_row = cursor.fetchone()
+                if c_row:
+                    child_name = c_row["name"]
+        else:
+            title = user_text[:40].strip()
+            if len(user_text) > 40:
+                title += "..."
+
+            cursor.execute("""
+                INSERT INTO chat_conversations (user_id, child_id, title, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (user_id, child_id, title, now_str, now_str))
+            conversation_id = cursor.lastrowid
+
+        # Insert user message
+        cursor.execute("""
+            INSERT INTO chat_messages (conversation_id, sender_role, content, created_at)
+            VALUES (?, 'user', ?, ?)
+        """, (conversation_id, user_text, now_str))
+
+        # Fetch recent messages for prompt history
+        cursor.execute("""
+            SELECT sender_role, content FROM chat_messages 
+            WHERE conversation_id = ? 
+            ORDER BY id ASC
+        """, (conversation_id,))
+        rows = cursor.fetchall()
+        history = [{"role": r["sender_role"], "content": r["content"]} for r in rows]
+        conn.commit()
+
+    # Generate AI response via OpenRouter asynchronously (with retry)
     reply_text = await generate_ai_chat_response(
         conversation_history=history,
         user_id=user_id,
@@ -148,14 +323,6 @@ async def send_chat_message(
             "UPDATE chat_conversations SET updated_at = ? WHERE id = ?",
             (reply_now_str, conversation_id)
         )
-
-        child_name = None
-        if child_id:
-            cursor.execute("SELECT name FROM children WHERE id = ?", (child_id,))
-            c_row = cursor.fetchone()
-            if c_row:
-                child_name = c_row["name"]
-
         conn.commit()
 
     return ChatSendMessageResponse(
@@ -190,8 +357,7 @@ def create_new_conversation(
                 )
             child_name = c_row["name"]
 
-        title = req.title.strip() if req.title else "Nutrition Advice"
-
+        title = req.title.strip() if req.title and req.title.strip() else "Nutrition Advice"
         cursor.execute("""
             INSERT INTO chat_conversations (user_id, child_id, title, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)

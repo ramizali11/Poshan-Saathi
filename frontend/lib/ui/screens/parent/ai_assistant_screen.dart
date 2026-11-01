@@ -7,6 +7,7 @@ import 'package:frontend/core/models/chat_model.dart';
 import 'package:frontend/core/services/child_session.dart';
 import 'package:frontend/core/services/api_service.dart';
 import 'package:frontend/core/widgets/child_selector_widget.dart';
+import 'package:frontend/core/widgets/chat_markdown_widget.dart';
 
 class AiAssistantScreen extends StatefulWidget {
   final int? initialConversationId;
@@ -72,13 +73,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> with TickerProvid
       if (_activeConversationId != null) {
         await _loadConversation(_activeConversationId!);
       } else if (history.isNotEmpty) {
-        // Load the most recent conversation
         final mostRecent = history.first;
         _activeConversationId = mostRecent.id;
         _conversationTitle = mostRecent.title;
         await _loadConversation(mostRecent.id);
       } else {
-        // First-time welcome state with active child context
         _showInitialWelcome();
       }
     } catch (e) {
@@ -163,6 +162,19 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> with TickerProvid
     });
   }
 
+  /// Smooth auto-scroll that only activates if user is already near the bottom
+  void _smartScrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        final pos = _scrollController.position;
+        final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
+        if (distanceFromBottom < 140) {
+          _scrollController.jumpTo(pos.maxScrollExtent);
+        }
+      }
+    });
+  }
+
   Future<void> _sendMessage(String text, {int? retryIndex}) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty || _isTyping) return;
@@ -171,7 +183,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> with TickerProvid
 
     ChatMessage userMsg;
     if (retryIndex != null && retryIndex < _messages.length) {
-      // Re-use existing failed message
       userMsg = _messages[retryIndex].copyWith(isError: false, isPending: true, errorMessage: null);
       setState(() {
         _messages[retryIndex] = userMsg;
@@ -192,6 +203,100 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> with TickerProvid
       _scrollToBottom();
     }
 
+    int? assistantMsgIndex;
+    final StringBuffer tokenBuffer = StringBuffer();
+    bool hasReceivedFirstToken = false;
+
+    try {
+      final stream = ApiService.instance.streamChatMessage(
+        message: trimmed,
+        conversationId: _activeConversationId,
+        childId: activeChild?.id,
+      );
+
+      await for (final event in stream) {
+        if (!mounted) return;
+
+        if (event.isToken && event.delta != null) {
+          if (!hasReceivedFirstToken) {
+            hasReceivedFirstToken = true;
+            tokenBuffer.write(event.delta!);
+            setState(() {
+              _isTyping = false;
+              _messages.add(ChatMessage(
+                senderRole: 'assistant',
+                content: tokenBuffer.toString(),
+                createdAt: DateTime.now(),
+                isPending: true,
+              ));
+              assistantMsgIndex = _messages.length - 1;
+            });
+          } else if (assistantMsgIndex != null && assistantMsgIndex! < _messages.length) {
+            tokenBuffer.write(event.delta!);
+            setState(() {
+              _messages[assistantMsgIndex!] = _messages[assistantMsgIndex!].copyWith(
+                content: tokenBuffer.toString(),
+              );
+            });
+          }
+          _smartScrollToBottom();
+        } else if (event.isDone) {
+          final finalContent = event.reply ?? tokenBuffer.toString();
+          setState(() {
+            _isTyping = false;
+            if (_activeConversationId == null && event.conversationId != null) {
+              _activeConversationId = event.conversationId;
+              _refreshHistoryList();
+            }
+
+            if (assistantMsgIndex != null && assistantMsgIndex! < _messages.length) {
+              _messages[assistantMsgIndex!] = _messages[assistantMsgIndex!].copyWith(
+                id: event.messageId,
+                conversationId: event.conversationId ?? _activeConversationId,
+                content: finalContent,
+                isPending: false,
+              );
+            } else {
+              _messages.add(ChatMessage(
+                id: event.messageId,
+                conversationId: event.conversationId ?? _activeConversationId,
+                senderRole: 'assistant',
+                content: finalContent,
+                createdAt: DateTime.now(),
+                isPending: false,
+              ));
+            }
+          });
+          _scrollToBottom();
+          return;
+        } else if (event.isError) {
+          if (!hasReceivedFirstToken) {
+            await _fallbackSyncSend(trimmed, userMsg, retryIndex, activeChild);
+          } else {
+            setState(() {
+              _isTyping = false;
+              if (assistantMsgIndex != null && assistantMsgIndex! < _messages.length) {
+                _messages[assistantMsgIndex!] = _messages[assistantMsgIndex!].copyWith(isPending: false);
+              }
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Streaming connection exception: $e');
+      if (mounted && !hasReceivedFirstToken) {
+        await _fallbackSyncSend(trimmed, userMsg, retryIndex, activeChild);
+      }
+    } finally {
+      if (mounted && _isTyping) {
+        setState(() => _isTyping = false);
+      }
+    }
+  }
+
+  /// Graceful fallback to standard synchronous completion request
+  Future<void> _fallbackSyncSend(String trimmed, ChatMessage userMsg, int? retryIndex, ChildModel? activeChild) async {
     try {
       final result = await ApiService.instance.sendChatMessage(
         message: trimmed,
@@ -649,7 +754,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> with TickerProvid
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.84),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: isUser
@@ -677,12 +782,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> with TickerProvid
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SelectableText(
-              msg.content,
-              style: AppTypography.bodyMedium.copyWith(
-                color: isUser ? Colors.white : AppColors.textPrimary,
-                height: 1.45,
-              ),
+            // High-performance clean Markdown rendering
+            ChatMarkdownWidget(
+              text: msg.content,
+              isUser: isUser,
             ),
             if (msg.isError) ...[
               const SizedBox(height: 8),

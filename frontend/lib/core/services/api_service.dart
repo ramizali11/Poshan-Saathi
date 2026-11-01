@@ -1049,6 +1049,120 @@ class ApiService {
   // AI CHATBOT METHODS
   // ===========================================================================
 
+  /// Streams message tokens in real-time via Server-Sent Events (SSE).
+  Stream<ChatStreamEvent> streamChatMessage({
+    required String message,
+    int? conversationId,
+    int? childId,
+  }) async* {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) {
+      yield const ChatStreamEvent(
+        type: 'error',
+        error: 'Please log in to chat with PoshanSaathi AI.',
+      );
+      return;
+    }
+
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      yield const ChatStreamEvent(
+        type: 'error',
+        error: 'Message cannot be empty.',
+      );
+      return;
+    }
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/stream');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+      request.headers.set('Accept', 'text/event-stream');
+
+      final body = <String, dynamic>{
+        'message': trimmed,
+        if (conversationId != null) 'conversation_id': conversationId,
+        if (childId != null) 'child_id': childId,
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 40));
+
+      if (response.statusCode != 200) {
+        final errBody = await response.transform(utf8.decoder).join();
+        String errorMsg = 'Failed to connect to AI (Error ${response.statusCode})';
+        try {
+          final errMap = jsonDecode(errBody);
+          if (errMap is Map && errMap['detail'] != null) {
+            errorMsg = errMap['detail'].toString();
+          }
+        } catch (_) {}
+        yield ChatStreamEvent(type: 'error', error: errorMsg);
+        return;
+      }
+
+      await for (final line in response.transform(utf8.decoder).transform(const LineSplitter())) {
+        final trimmedLine = line.trim();
+        if (trimmedLine.isEmpty || trimmedLine.startsWith(':')) continue;
+
+        if (trimmedLine.startsWith('data: ')) {
+          final jsonStr = trimmedLine.substring(6).trim();
+          try {
+            final map = jsonDecode(jsonStr);
+            if (map is Map<String, dynamic>) {
+              final type = map['type']?.toString() ?? 'token';
+              if (type == 'token') {
+                yield ChatStreamEvent(
+                  type: 'token',
+                  delta: map['delta']?.toString() ?? '',
+                );
+              } else if (type == 'done') {
+                yield ChatStreamEvent(
+                  type: 'done',
+                  reply: map['reply']?.toString(),
+                  conversationId: map['conversation_id'] is int
+                      ? map['conversation_id'] as int
+                      : int.tryParse(map['conversation_id']?.toString() ?? ''),
+                  messageId: map['message_id'] is int
+                      ? map['message_id'] as int
+                      : int.tryParse(map['message_id']?.toString() ?? ''),
+                  childId: map['child_id'] is int
+                      ? map['child_id'] as int
+                      : int.tryParse(map['child_id']?.toString() ?? ''),
+                  childName: map['child_name']?.toString(),
+                );
+              } else if (type == 'error') {
+                yield ChatStreamEvent(
+                  type: 'error',
+                  error: map['error']?.toString() ?? 'An error occurred during streaming.',
+                );
+              }
+            }
+          } catch (e) {
+            debugPrint('ℹ️ SSE JSON parse error: $e');
+          }
+        }
+      }
+    } on TimeoutException {
+      yield const ChatStreamEvent(
+        type: 'error',
+        error: 'The AI service took too long to reply. Please check your internet connection and tap retry.',
+      );
+    } catch (e) {
+      debugPrint('ℹ️ Streaming connection error: $e');
+      yield const ChatStreamEvent(
+        type: 'error',
+        error: 'Connection interrupted while streaming response. Please tap retry.',
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   /// Sends a message to the AI Chatbot and returns the assistant's reply.
   Future<ChatSendResult> sendChatMessage({
     required String message,
