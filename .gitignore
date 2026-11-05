@@ -52,3 +52,8 @@ frontend/ios/Podfile.lock
 .DS_Store
 Thumbs.db
 
+
+*.apk
+*.zip
+frontend/backup_compose/
+

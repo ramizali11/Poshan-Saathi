@@ -1,30 +1,57 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../core/data/mock_data.dart';
+import '../../../core/services/shopping_list_service.dart';
+import '../../../core/services/meals_data_service.dart';
 
 class RecipeDetailsScreen extends StatefulWidget {
-  const RecipeDetailsScreen({super.key});
+  final Meal? meal;
+
+  const RecipeDetailsScreen({super.key, this.meal});
 
   @override
   State<RecipeDetailsScreen> createState() => _RecipeDetailsScreenState();
 }
 
 class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
-  final List<bool> _checkedIngredients = [true, true, true, true, true, true];
-  bool _isCooked = false;
+  late Meal _meal;
+  int _portions = 1;
+  late List<bool> _checkedIngredients;
+  bool _isFavorite = false;
 
-  final List<String> _ingredients = [
-    'Yellow moong dal (પીળી મગની દાળ) Pre-soaked 15m — 2 tbsp',
-    'Broken raw rice (ટુકડા ચોખા) Easier for toddler gut — 2 tbsp',
-    'Tender carrot diced small (ઝીણું ગાજર) Steamed/brunoised — 1 tbsp',
-    'Turmeric & Cumin (હળદર અને જીરું) Carminative herbs — 1 pinch each',
-    'Pure Desi Cow Ghee (ગાયનું ઘી) A2 nutrition — 1 tsp',
-    'Clean filtered water (પાણી) Porridge consistency — 1 cup',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _meal = widget.meal ?? MockData.allMeals[5]; // Default to Moong Dal Khichdi
+    _checkedIngredients = List.generate(_meal.ingredients.length, (_) => false);
+    _isFavorite = _meal.isFavorite;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Meal) {
+      setState(() {
+        _meal = args;
+        _checkedIngredients = List.generate(_meal.ingredients.length, (_) => false);
+        _isFavorite = _meal.isFavorite;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final calories = _meal.calories * _portions;
+    final protein = (_meal.protein * _portions).toStringAsFixed(1);
+    final carbs = (_meal.carbs * _portions).toStringAsFixed(1);
+    final fats = (_meal.fats * _portions).toStringAsFixed(1);
+    final fiber = (_meal.fiber * _portions).toStringAsFixed(1);
+    final cost = _meal.costInRupees * _portions;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -34,14 +61,64 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.bookmark_border_rounded),
-            onPressed: () {},
+            icon: Icon(
+              _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              color: _isFavorite ? AppColors.statusRed : null,
+            ),
+            tooltip: 'Favorite',
+            onPressed: () {
+              setState(() => _isFavorite = !_isFavorite);
+              MealsDataService.instance.toggleFavorite(_meal.id);
+            },
           ),
           IconButton(
             icon: const Icon(Icons.share_outlined),
-            onPressed: () {},
+            tooltip: 'Share Recipe',
+            onPressed: _shareRecipe,
           ),
         ],
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: AppColors.divider)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -3),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _addIngredientsToShoppingList,
+                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+                  label: const Text('Add Ingredients to Cart', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('${_meal.title} logged to today\'s intake!'),
+                        backgroundColor: AppColors.statusGreen,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: const Text('Mark as Fed', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -59,29 +136,58 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  StatusBadge(
-                    label: 'Stage 3: 10-18 Months • બાળ પોષણ સંગ્રહ',
-                    status: BadgeStatus.verified,
-                    icon: Icons.child_care_rounded,
-                    isSmall: true,
+                  Row(
+                    children: [
+                      StatusBadge(
+                        label: '${_meal.category} • ${_meal.dietaryType}',
+                        status: BadgeStatus.verified,
+                        icon: Icons.child_care_rounded,
+                        isSmall: true,
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryContainer,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _meal.slotName,
+                          style: AppTypography.labelSmall.copyWith(
+                            color: AppColors.primaryDark,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Vegetable Moong Dal Khichdi\n(શાકભાજી મગની દાળની ખીચડી)',
+                    _meal.title,
                     style: AppTypography.headline1.copyWith(fontSize: 22),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Steamed Carrots & Desi Ghee • પૌષ્ટિક બપોરનું ભોજન',
-                    style: AppTypography.bodySmall.copyWith(color: AppColors.secondary, fontWeight: FontWeight.w600),
+                    _meal.gujaratiTitle,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.secondary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _meal.subtitle,
+                    style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 6,
                     children: [
-                      StatusBadge(label: 'Prep: 20 mins', icon: Icons.timer_outlined, isSmall: true),
-                      StatusBadge(label: 'Cost: ~₹22 / serving', icon: Icons.payments_outlined, isSmall: true),
-                      StatusBadge(label: 'Iron Bio-available', status: BadgeStatus.normal, icon: Icons.water_drop_outlined, isSmall: true),
+                      StatusBadge(label: 'Prep: ${_meal.prepMinutes} mins', icon: Icons.timer_outlined, isSmall: true),
+                      StatusBadge(label: 'Cost: ~₹$cost', icon: Icons.payments_outlined, isSmall: true),
+                      StatusBadge(label: _meal.servingSize, icon: Icons.restaurant_rounded, isSmall: true),
                     ],
                   ),
                 ],
@@ -89,7 +195,85 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Absorption Secret Card (Amber Tint)
+            // Portion Multiplier
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.divider),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Portion Size (ભાગ / પીરસવાનું પ્રમાણ):',
+                    style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  Row(
+                    children: [1, 2, 3].map((p) {
+                      final isSel = _portions == p;
+                      return GestureDetector(
+                        onTap: () => setState(() => _portions = p),
+                        child: Container(
+                          margin: const EdgeInsets.only(left: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSel ? AppColors.primary : AppColors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${p}x',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isSel ? Colors.white : AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Nutritional Breakdown Grid
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.divider),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Nutritional Value (પોષક મૂલ્ય)',
+                    style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _macroBox('Calories', '$calories kcal', AppColors.primary),
+                      const SizedBox(width: 8),
+                      _macroBox('Protein', '${protein}g', AppColors.secondary),
+                      const SizedBox(width: 8),
+                      _macroBox('Carbs', '${carbs}g', AppColors.primaryDark),
+                      const SizedBox(width: 8),
+                      _macroBox('Fats', '${fats}g', AppColors.tertiaryDark),
+                      const SizedBox(width: 8),
+                      _macroBox('Fiber', '${fiber}g', AppColors.statusGreen),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Absorption Tip Card (Amber Tint)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -105,72 +289,70 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                       const Icon(Icons.lightbulb_rounded, color: AppColors.tertiaryDark, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        'Absorption Secret (પોષણ રહસ્ય)',
-                        style: AppTypography.labelLarge.copyWith(
-                          fontWeight: FontWeight.w700,
+                        'Micronutrient Bioavailability Secret (પોષણ ગુણવત્તા)',
+                        style: AppTypography.labelMedium.copyWith(
                           color: AppColors.tertiaryDark,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Non-heme plant iron is 3x better absorbed when paired with Vitamin C.',
-                    style: AppTypography.bodyLarge.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                    _meal.absorptionTip,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.tertiaryDark,
+                      height: 1.4,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Squeeze 3 drops of fresh lemon or serve with amla paste right before feeding!',
-                    style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'જમતા પહેલાં ૩ ટીપાં તાજા લીંબુનો રસ ઉમેરવાથી દાળનું લોહતત્વ બાળક ઝડપથી પચાવી શકે છે.',
-                    style: AppTypography.gujaratiSubtitle.copyWith(color: AppColors.secondaryDark),
+                    _meal.absorptionTipGujarati,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.tertiaryDark,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
-            // Nutritional Balance (WHO Metrics)
+            // Texture Guidance Card
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: AppColors.divider),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    'Nutritional Balance (WHO Growth Metrics)',
-                    style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: _nutrientItem('Plant Protein', 'Moong Dal 4.2g', 'Muscle growth', Icons.egg_alt_outlined)),
-                      Expanded(child: _nutrientItem('Carbohydrates', 'Rice 18g', 'Active energy', Icons.grain_outlined)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(child: _nutrientItem('Vitamin A', 'Carrots', 'Eye & immunity', Icons.visibility_outlined)),
-                      Expanded(child: _nutrientItem('Healthy Fats', 'Desi Ghee 1 tsp', 'Brain lipids', Icons.local_fire_department_outlined)),
-                    ],
+                  const Icon(Icons.soup_kitchen_rounded, color: AppColors.primary, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Texture & Oral-Motor Chewing Guideline',
+                          style: AppTypography.labelSmall.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _meal.textureNote,
+                          style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary, fontSize: 11),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
-            // Ingredients Checklist (6 Items)
+            // Ingredients Check-off List
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -185,41 +367,43 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Ingredients (ઘટકો) • Serves 1 Toddler',
-                        style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.w700),
+                        'Ingredients (જરૂરી સામગ્રી)',
+                        style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        '6 Items',
-                        style: AppTypography.labelSmall.copyWith(color: AppColors.primary),
+                        '${_checkedIngredients.where((b) => b).length}/${_meal.ingredients.length} ready',
+                        style: AppTypography.labelSmall.copyWith(color: AppColors.textMuted),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  ...List.generate(_ingredients.length, (i) {
+                  const SizedBox(height: 10),
+                  ...List.generate(_meal.ingredients.length, (idx) {
+                    final ing = _meal.ingredients[idx];
+                    final isChecked = _checkedIngredients[idx];
                     return CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
-                      dense: true,
                       controlAffinity: ListTileControlAffinity.leading,
-                      activeColor: AppColors.primary,
+                      dense: true,
+                      activeColor: AppColors.statusGreen,
+                      value: isChecked,
+                      onChanged: (val) {
+                        setState(() => _checkedIngredients[idx] = val ?? false);
+                      },
                       title: Text(
-                        _ingredients[i],
+                        ing,
                         style: AppTypography.bodySmall.copyWith(
-                          fontSize: 12,
-                          decoration: _checkedIngredients[i] ? null : TextDecoration.lineThrough,
+                          decoration: isChecked ? TextDecoration.lineThrough : null,
+                          color: isChecked ? AppColors.textMuted : AppColors.textPrimary,
                         ),
                       ),
-                      value: _checkedIngredients[i],
-                      onChanged: (val) {
-                        setState(() => _checkedIngredients[i] = val ?? false);
-                      },
                     );
                   }),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
-            // Step-by-Step Cooking Guide
+            // Cooking Steps
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -232,135 +416,114 @@ class _RecipeDetailsScreenState extends State<RecipeDetailsScreen> {
                 children: [
                   Text(
                     'Step-by-Step Preparation (બનાવવાની રીત)',
-                    style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.w700),
+                    style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
-                  _cookingStep(
-                    stepNum: 1,
-                    time: '5 mins',
-                    title: 'Cleanse & Soak',
-                    desc: 'Wash moong dal and broken rice thoroughly 3 times until clear. Soak in warm water for 10-15 minutes.',
-                  ),
-                  const Divider(height: 20),
-                  _cookingStep(
-                    stepNum: 2,
-                    time: '12 mins',
-                    title: 'Gentle Pressure Cooking',
-                    desc: 'Add grains, diced carrots, water, turmeric and cumin. Pressure cook for 3-4 whistles on medium flame.',
-                  ),
-                  const Divider(height: 20),
-                  _cookingStep(
-                    stepNum: 3,
-                    time: 'Texture Critical',
-                    title: 'Fork Mash (Do NOT Blend)',
-                    desc: 'Let steam release naturally. Stir in ghee. Fork-mash softly with back of spoon. Soft solid lumps train oral-motor chewing and tongue lateralization.',
-                    isWarning: true,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Allergen & Safety Check
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.shield_outlined, color: AppColors.secondary, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Contains dairy (Cow Ghee). If sensitive, substitute with cold-pressed sesame oil. Ensure carrot pieces are steamed fully soft before mashing to eliminate choking risk.',
-                      style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textSecondary),
-                    ),
-                  ),
+                  ...List.generate(_meal.cookingSteps.length, (idx) {
+                    final step = _meal.cookingSteps[idx];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: AppColors.primaryContainer,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${idx + 1}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryDark,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              step,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.textPrimary,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-
-            // CTA Button
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() => _isCooked = true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Logged into Aarav's Daily Micronutrient Tracker (14m Milestone)!"),
-                    backgroundColor: AppColors.statusGreen,
-                  ),
-                );
-              },
-              icon: Icon(_isCooked ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded),
-              label: Text(_isCooked
-                  ? 'Cooked & Logged (જમા થઈ ગયું)'
-                  : 'Mark as Cooked & Log Meal (જમા કરો)'),
-            ),
-            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
 
-  Widget _nutrientItem(String title, String value, String benefit, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: AppColors.primary),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: AppTypography.labelSmall.copyWith(color: AppColors.textMuted)),
-              Text(value, style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.bold)),
-              Text(benefit, style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.statusGreen)),
-            ],
-          ),
+  Widget _macroBox(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
         ),
-      ],
+        child: Column(
+          children: [
+            Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 2),
+            Text(label, style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _cookingStep({
-    required int stepNum,
-    required String time,
-    required String title,
-    required String desc,
-    bool isWarning = false,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 12,
-          backgroundColor: isWarning ? AppColors.statusOrange : AppColors.primary,
-          child: Text('$stepNum', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(title, style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.w700)),
-                  Text(time, style: AppTypography.labelSmall.copyWith(color: isWarning ? AppColors.statusOrange : AppColors.textMuted, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(desc, style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary, height: 1.4)),
-            ],
+  void _addIngredientsToShoppingList() async {
+    final count = await ShoppingListService.instance.generateFromMeals([_meal]);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added $count ingredients to your Shopping List!'),
+          backgroundColor: AppColors.statusGreen,
+          action: SnackBarAction(
+            label: 'View Cart',
+            textColor: Colors.white,
+            onPressed: () => Navigator.pushNamed(context, '/shopping_list'),
           ),
         ),
-      ],
+      );
+    }
+  }
+
+  void _shareRecipe() {
+    final buffer = StringBuffer();
+    buffer.writeln('🍲 ${_meal.title} (${_meal.gujaratiTitle})');
+    buffer.writeln('Nutritional Stats: ${_meal.calories} kcal | ${_meal.protein}g Protein | ${_meal.fiber}g Fiber');
+    buffer.writeln('\nIngredients:');
+    for (final ing in _meal.ingredients) {
+      buffer.writeln('• $ing');
+    }
+    buffer.writeln('\nPreparation:');
+    for (int i = 0; i < _meal.cookingSteps.length; i++) {
+      buffer.writeln('${i + 1}. ${_meal.cookingSteps[i]}');
+    }
+    buffer.writeln('\nShared via Poshan Saathi Health Platform');
+
+    Clipboard.setData(ClipboardData(text: buffer.toString()));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Recipe details copied to clipboard! Ready to share.'),
+        backgroundColor: AppColors.statusGreen,
+      ),
     );
   }
 }
-

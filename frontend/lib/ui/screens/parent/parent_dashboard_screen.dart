@@ -1,3 +1,4 @@
+import 'package:frontend/core/constants/app_images_data.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:frontend/core/theme/app_colors.dart';
@@ -305,79 +306,102 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        titleSpacing: 16,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.eco_rounded, color: AppColors.primary, size: 20),
-                const SizedBox(width: 6),
-                Text(
-                  'PoshanSaathi',
-                  style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ],
-            ),
-            Text(
-              'પોષણ સાથી • SEVA FIRST',
-              style: AppTypography.labelSmall.copyWith(
-                color: AppColors.secondary,
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        titleSpacing: 10,
+        toolbarHeight: 74,
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.memory(
+                AppImagesData.leafLogoBytes,
+                width: 36,
+                height: 36,
+                fit: BoxFit.contain,
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'PoshanSaathi',
+                    style: AppTypography.headline3.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                      color: const Color(0xFF171B18),
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  Text(
+                    'પોષણ સાથી • SEVA FIRST',
+                    style: AppTypography.labelSmall.copyWith(
+                      color: const Color(0xFF5F665F),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
         actions: [
           // Child Switcher Pill
           GestureDetector(
             onTap: () => _showUserProfileModal(context, UserSession.instance.currentUser),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: AppColors.primaryContainer.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                color: const Color(0xFFE7F3E2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFDFE6DA)),
               ),
-              child: Row(
+              child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircleAvatar(
-                    radius: 10,
-                    backgroundColor: AppColors.primary,
-                    child: Text('AS', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                  CircleAvatar(
+                    radius: 12,
+                    backgroundColor: Color(0xFF176B3A),
+                    child: Text('AS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
-                  const SizedBox(width: 6),
+                  SizedBox(width: 6),
                   Text(
                     'Aarav (14m)',
-                    style: AppTypography.labelSmall.copyWith(
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: AppColors.primaryDark,
+                      color: Color(0xFF104A2B),
+                      fontSize: 12.5,
                     ),
                   ),
-                  const Icon(Icons.arrow_drop_down_rounded, size: 18, color: AppColors.primaryDark),
+                  SizedBox(width: 2),
+                  Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF104A2B)),
                 ],
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           // Notification Bell
           IconButton(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             icon: Stack(
               clipBehavior: Clip.none,
               children: [
-                const Icon(Icons.notifications_outlined, size: 22),
+                const Icon(Icons.notifications_outlined, size: 26, color: Color(0xFF171B18)),
                 Positioned(
-                  right: 0,
-                  top: 0,
+                  right: 1,
+                  top: 1,
                   child: Container(
                     width: 8,
                     height: 8,
                     decoration: const BoxDecoration(
-                      color: AppColors.statusRed,
+                      color: Color(0xFFE53935),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -394,220 +418,348 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Greeting Card
+            // Greeting Card (Direct Trigger to Profile - Actual Responsive UI)
             SafeLayoutBox(
               name: 'GreetingCard',
-              child: ValueListenableBuilder<UserModel?>(
-                valueListenable: UserSession.instance.currentUserNotifier,
-                builder: (context, currentUser, _) {
-                  final caregiverName = (currentUser?.name.isNotEmpty == true)
-                      ? currentUser!.name
-                      : 'Caregiver';
-                  final initials = caregiverName.trim().isNotEmpty
-                      ? caregiverName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
-                      : 'U';
-                  final hasAvatar = currentUser?.avatarUrl != null && currentUser!.avatarUrl!.startsWith('http');
-
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.divider),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Good morning, $caregiverName! ☀️',
-                                style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-                              ),
-                              Text(
-                                'સુપ્રભાત • Happy feeding day',
-                                style: AppTypography.gujaratiSubtitle.copyWith(color: AppColors.secondary),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "Let's take a gentle, healthy step toward Aarav's growth milestone today.",
-                                style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Interactive Caregiver Profile Avatar
-                        GestureDetector(
-                          onTap: () => _showUserProfileModal(context, currentUser),
-                          child: Tooltip(
-                            message: 'View Caregiver Profile',
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.primary, width: 2),
-                              ),
-                              child: CircleAvatar(
-                                radius: 20,
-                                backgroundColor: AppColors.primaryContainer,
-                                backgroundImage: hasAvatar ? NetworkImage(currentUser!.avatarUrl!) : null,
-                                child: !hasAvatar
-                                    ? Text(
-                                        initials,
-                                        style: const TextStyle(
-                                          color: AppColors.primaryDark,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      )
-                                    : null,
+              child: GestureDetector(
+                onTap: () => _showUserProfileModal(context, UserSession.instance.currentUser),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Text(
+                                  'Good morning, Aarav',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                ),
+                                SizedBox(width: 4),
+                                Text('☀️', style: TextStyle(fontSize: 16)),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            const Text(
+                              'Happy feeding day',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF4A6B4F),
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              "Gentle nutrition for today's milestone.",
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Color(0xFF64748B),
+                                height: 1.35,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  );
-                },
+                      ),
+                      const SizedBox(width: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.memory(
+                          AppImagesData.babyIllustrationBytes,
+                          width: 88,
+                          height: 88,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 14),
 
-            // Hero Child Growth Card (#ceeace background)
+            // Hero Child Growth Card
             SafeLayoutBox(
               name: 'HeroGrowthCard',
               child: Container(
-                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryContainer.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 20,
-                          backgroundColor: AppColors.primary,
-                          child: const Text('14m', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      _child.name,
-                                      style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 16),
-                                ],
-                              ),
-                              Text(
-                                _child.feedingStage,
-                                style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textSecondary),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        StatusBadge(
-                          label: 'WHO Green Zone',
-                          status: BadgeStatus.normal,
-                          icon: Icons.verified_rounded,
-                          isSmall: true,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 3 Metric Tiles
-                    Row(
-                      children: [
-                        Expanded(
-                          child: MetricTile(
-                            icon: Icons.scale_rounded,
-                            label: 'WEIGHT',
-                            value: '${_child.currentWeightKg} kg',
-                            subtext: '+0.3kg / 30d',
-                            iconColor: AppColors.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: MetricTile(
-                            icon: Icons.straighten_rounded,
-                            label: 'LENGTH',
-                            value: '${_child.currentLengthCm} cm',
-                            subtext: '50th Percentile',
-                            iconColor: AppColors.secondary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: MetricTile(
-                            icon: Icons.calendar_today_rounded,
-                            label: 'MEASURED',
-                            value: '12 Feb',
-                            subtext: 'By ASHA worker',
-                            iconColor: AppColors.tertiaryDark,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // ASHA & Chart Link Row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              const Icon(Icons.volunteer_activism_rounded, size: 16, color: AppColors.primary),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  'Kavita Ben • Anganwadi Sector 4',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.primaryDark,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        TextButton.icon(
-                          onPressed: () {
-                            if (widget.onNavigateToGrowth != null) {
-                              widget.onNavigateToGrowth!();
-                            } else {
-                              Navigator.pushNamed(context, '/growth');
-                            }
-                          },
-                          icon: const Icon(Icons.show_chart_rounded, size: 16),
-                          label: const Text('View Chart >', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFE8F5E5), Color(0xFFF4FAF2), Color(0xFFE2F2E0)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: const Color(0xFFCCE4CA), width: 1.2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF176B3A).withOpacity(0.06),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
                     ),
                   ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header Row: Avatar, Name, Stage & WHO Green Zone Badge
+                      Row(
+                        children: [
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF176B3A), Color(0xFF289659)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF176B3A).withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  '14m',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                    height: 1.1,
+                                  ),
+                                ),
+                                Text(
+                                  'મહિના',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 8.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Aarav Shah',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 18,
+                                        color: Color(0xFF171B18),
+                                        letterSpacing: -0.3,
+                                      ),
+                                    ),
+                                    SizedBox(width: 5),
+                                    Icon(Icons.check_circle_rounded, color: Color(0xFF176B3A), size: 18),
+                                  ],
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Stage 3: Coarse Mash 🥣',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: Color(0xFF4A554A),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFCCE4CA), width: 1.2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.02),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.eco_rounded, size: 14, color: Color(0xFF176B3A)),
+                                SizedBox(width: 4),
+                                Text(
+                                  'WHO Green Zone',
+                                  style: TextStyle(
+                                    color: Color(0xFF176B3A),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 3 High-End Metric Tiles with Colored Circle Icons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildEnhancedMetricTile(
+                              icon: Icons.scale_rounded,
+                              iconBg: const Color(0xFFE8F5E9),
+                              iconColor: const Color(0xFF176B3A),
+                              label: 'WEIGHT',
+                              value: '9.4 kg',
+                              subtext: '↑ +0.3 kg / 30d',
+                              subtextBg: const Color(0xFFE2F3DF),
+                              subtextColor: const Color(0xFF176B3A),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildEnhancedMetricTile(
+                              icon: Icons.straighten_rounded,
+                              iconBg: const Color(0xFFFEF3C7),
+                              iconColor: const Color(0xFFB45309),
+                              label: 'LENGTH',
+                              value: '77.2 cm',
+                              subtext: '50th Percentile',
+                              subtextBg: const Color(0xFFFEF3C7),
+                              subtextColor: const Color(0xFF92400E),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildEnhancedMetricTile(
+                              icon: Icons.calendar_month_rounded,
+                              iconBg: const Color(0xFFE0F2FE),
+                              iconColor: const Color(0xFF0369A1),
+                              label: 'LAST MEASURED',
+                              value: '12 Feb',
+                              subtext: 'By ASHA worker',
+                              subtextBg: const Color(0xFFE0F2FE),
+                              subtextColor: const Color(0xFF075985),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Caregiver & Chart Action Row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => Navigator.pushNamed(context, '/anganwadi_connect'),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.85),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFD0E5CC)),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.group_rounded, size: 16, color: Color(0xFF176B3A)),
+                                    SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        'Kavita Ben • ASHA',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11.5,
+                                          color: Color(0xFF176B3A),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF176B3A)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                if (widget.onNavigateToGrowth != null) {
+                                  widget.onNavigateToGrowth!();
+                                } else {
+                                  Navigator.pushNamed(context, '/growth');
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF176B3A),
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF176B3A).withOpacity(0.2),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.trending_up_rounded, size: 16, color: Colors.white),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Growth Chart >',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -619,22 +771,26 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Quick Actions (ત્વરિત સેવાઓ)',
-                    style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
+                  const Text(
+                    'Quick Actions',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      color: Color(0xFF171B18),
+                    ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   IntrinsicHeight(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Expanded(
                           child: _buildQuickAction(
-                            icon: Icons.auto_awesome,
-                            iconColor: AppColors.tertiaryDark,
-                            bgColor: AppColors.tertiaryLight,
-                            title: 'Ask PoshanSaathi AI',
-                            subtitle: 'Instant feeding advice & remedies (24/7 AI)',
+                            icon: Icons.auto_awesome_rounded,
+                            iconColor: const Color(0xFFB77908),
+                            bgColor: const Color(0xFFFFF0DD),
+                            title: 'PoshanSaathi AI',
+                            subtitle: '24/7 feeding advice',
                             onTap: () {
                               if (widget.onNavigateToAI != null) {
                                 widget.onNavigateToAI!();
@@ -648,10 +804,10 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                         Expanded(
                           child: _buildQuickAction(
                             icon: Icons.straighten_rounded,
-                            iconColor: AppColors.primary,
-                            bgColor: AppColors.primaryLight,
+                            iconColor: const Color(0xFF176B3A),
+                            bgColor: const Color(0xFFE7F3E2),
                             title: 'Log Growth',
-                            subtitle: 'Update height, weight & teeth',
+                            subtitle: 'Height, weight & teeth',
                             onTap: () {
                               if (widget.onNavigateToGrowth != null) {
                                 widget.onNavigateToGrowth!();
@@ -672,10 +828,10 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                         Expanded(
                           child: _buildQuickAction(
                             icon: Icons.restaurant_rounded,
-                            iconColor: AppColors.secondary,
-                            bgColor: AppColors.secondaryLight,
-                            title: 'Iron & Anemia Guide',
-                            subtitle: 'Desi spinach, amla & jaggery recipes',
+                            iconColor: const Color(0xFFD3452B),
+                            bgColor: const Color(0xFFFCE9E4),
+                            title: 'Iron Recipes',
+                            subtitle: 'Iron-rich recipes & tips',
                             onTap: () => Navigator.pushNamed(context, '/recipe_details'),
                           ),
                         ),
@@ -683,10 +839,10 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                         Expanded(
                           child: _buildQuickAction(
                             icon: Icons.medical_services_rounded,
-                            iconColor: AppColors.statusBlue,
-                            bgColor: AppColors.statusBlueContainer,
-                            title: 'Consult Pediatrician',
-                            subtitle: 'Dr. Meera Patel • Next slot today',
+                            iconColor: const Color(0xFF1593D1),
+                            bgColor: const Color(0xFFE7F4FD),
+                            title: 'Pediatrician',
+                            subtitle: 'Dr. Meera Patel • Available',
                             onTap: () => Navigator.pushNamed(context, '/clinician_dashboard'),
                           ),
                         ),
@@ -719,7 +875,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                "Today's Meal Plan (આજનો આહાર)",
+                                "Today's Meal Plan",
                                 style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
                               ),
                               Text(
@@ -764,7 +920,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
-                                    'LUNCH (બપોરનું ભોજન) • 12:30 PM',
+                                    'LUNCH • 12:30 PM',
                                     style: AppTypography.labelSmall.copyWith(
                                       color: AppColors.primaryDark,
                                       fontWeight: FontWeight.bold,
@@ -785,11 +941,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                             'Vegetable Moong Dal Khichdi with Steamed Carrots & Desi Cow Ghee',
                             style: AppTypography.headline3.copyWith(fontWeight: FontWeight.w700),
                           ),
-                          Text(
-                            'શાકભાજી મગની દાળની ખીચડી અને દેશી ઘી',
-                            style: AppTypography.gujaratiSubtitle.copyWith(color: AppColors.secondary),
-                          ),
-                          const SizedBox(height: 8),
+                          
                           Wrap(
                             spacing: 6,
                             children: [
@@ -815,7 +967,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'Squeeze 3 drops of fresh lemon or serve with grated amla to boost plant-iron absorption by up to 300%.',
+                                    'Add lemon or amla to boost plant-iron absorption.',
                                     style: AppTypography.bodySmall.copyWith(
                                       fontSize: 11,
                                       color: AppColors.tertiaryDark,
@@ -883,7 +1035,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Little Nutrition Secret (પોષણ ગુણ)',
+                            'Nutrition Tip',
                             style: AppTypography.labelLarge.copyWith(
                               fontWeight: FontWeight.w700,
                               color: AppColors.tertiaryDark,
@@ -895,7 +1047,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Iron from Indian plant sources needs vitamin C buddies to be absorbed well. Avoid giving whole cow\'s milk right alongside staple grains and pulses, as excess calcium can temporarily block iron uptake.',
+                      "Pair plant-based iron with vitamin C. Avoid cow's milk with grains as calcium limits iron uptake.",
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.textPrimary,
                         height: 1.45,
@@ -903,7 +1055,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'ICMR-NIN Infant Guidelines 2024 • Clinical Team Reviewed',
+                      'ICMR-NIN Guidelines',
                       style: AppTypography.labelSmall.copyWith(fontSize: 10, color: AppColors.tertiaryDark),
                     ),
                   ],
@@ -942,7 +1094,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                             style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.w700),
                           ),
                           Text(
-                            'Thursday, 26 Feb (in 12 days) • Sector 4 Center',
+                            'Thu, 26 Feb • Sector 4 Center',
                             style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textSecondary),
                           ),
                         ],
@@ -973,37 +1125,59 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE6ECE0), width: 1.1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: bgColor,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: iconColor, size: 18),
+              child: Icon(icon, color: iconColor, size: 20),
             ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.w700),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF171B18),
+                      fontSize: 13,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF858B83)),
+              ],
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
               subtitle,
-              style: AppTypography.bodySmall.copyWith(fontSize: 10, color: AppColors.textMuted),
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF5F665F),
+                height: 1.3,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -1024,6 +1198,101 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
       child: Text(
         text,
         style: AppTypography.labelSmall.copyWith(fontSize: 10, color: AppColors.textSecondary),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedMetricTile({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required String subtext,
+    required Color subtextBg,
+    required Color subtextColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2EBE0), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 14, color: iconColor),
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFF6B7468),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 9.5,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF171B18),
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+              decoration: BoxDecoration(
+                color: subtextBg,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                subtext,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  color: subtextColor,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

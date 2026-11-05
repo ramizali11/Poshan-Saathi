@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
-import '../constants/app_strings.dart';
 
 class AppBottomNav extends StatelessWidget {
   final int currentIndex;
@@ -18,7 +17,7 @@ class AppBottomNav extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.divider, width: 1)),
+        border: Border(top: BorderSide(color: AppColors.borderSage, width: 1)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -36,39 +35,39 @@ class AppBottomNav extends StatelessWidget {
             children: [
               _buildNavItem(
                 index: 0,
-                icon: Icons.eco_rounded,
-                activeIcon: Icons.eco,
-                label: AppStrings.navHome,
-                gujaratiLabel: AppStrings.navHomeGuj,
+                icon: Icons.home_rounded,
+                activeIcon: Icons.home_rounded,
+                label: 'Home',
+                gujaratiLabel: 'મુખ્ય',
               ),
               _buildNavItem(
                 index: 1,
-                icon: Icons.restaurant_menu_rounded,
-                activeIcon: Icons.restaurant_menu,
-                label: AppStrings.navMeals,
-                gujaratiLabel: AppStrings.navMealsGuj,
+                icon: Icons.restaurant_rounded,
+                activeIcon: Icons.restaurant_rounded,
+                label: 'Meals',
+                gujaratiLabel: 'આહારે',
               ),
               _buildNavItem(
                 index: 2,
-                icon: Icons.show_chart_rounded,
-                activeIcon: Icons.show_chart,
-                label: AppStrings.navGrowth,
-                gujaratiLabel: AppStrings.navGrowthGuj,
+                icon: Icons.trending_up_rounded,
+                activeIcon: Icons.trending_up_rounded,
+                label: 'Growth',
+                gujaratiLabel: 'વિકાસ',
               ),
               _buildNavItem(
                 index: 3,
-                icon: Icons.auto_awesome_outlined,
-                activeIcon: Icons.auto_awesome,
-                label: AppStrings.navAI,
-                gujaratiLabel: AppStrings.navAIGuj,
+                icon: Icons.auto_awesome_rounded,
+                activeIcon: Icons.auto_awesome_rounded,
+                label: 'Ask AI',
+                gujaratiLabel: 'એઆઈ સહાય',
                 isSpecial: true,
               ),
               _buildNavItem(
                 index: 4,
                 icon: Icons.person_outline_rounded,
                 activeIcon: Icons.person_rounded,
-                label: AppStrings.navProfile,
-                gujaratiLabel: AppStrings.navProfileGuj,
+                label: 'Profile',
+                gujaratiLabel: 'પ્રોફાઈલ',
               ),
             ],
           ),
@@ -86,66 +85,47 @@ class AppBottomNav extends StatelessWidget {
     bool isSpecial = false,
   }) {
     final isSelected = currentIndex == index;
-    final color = isSelected ? AppColors.primary : AppColors.textMuted;
+    final color = isSelected ? AppColors.primaryForestGreen : AppColors.textMuted;
 
     return InkWell(
       onTap: () => onTap(index),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? (isSpecial
-                            ? AppColors.tertiaryLight
-                            : AppColors.primaryContainer.withOpacity(0.5))
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(
-                    isSelected ? activeIcon : icon,
-                    size: 22,
-                    color: isSelected
-                        ? (isSpecial ? AppColors.tertiaryDark : AppColors.primary)
-                        : color,
-                  ),
-                ),
-                if (isSpecial && !isSelected)
-                  Positioned(
-                    right: 4,
-                    top: 2,
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: AppColors.tertiary,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.lightGreenAccent
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                isSelected ? activeIcon : icon,
+                size: 22,
+                color: isSelected
+                    ? AppColors.primaryForestGreen
+                    : color,
+              ),
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: AppTypography.labelSmall.copyWith(
-                color: isSelected ? AppColors.primary : AppColors.textMuted,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? AppColors.primaryForestGreen : AppColors.textMuted,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
                 fontSize: 11,
               ),
             ),
             Text(
               gujaratiLabel,
               style: AppTypography.bodySmall.copyWith(
-                color: isSelected ? AppColors.primaryDark : AppColors.textDisabled,
+                color: isSelected ? AppColors.darkForestGreen : AppColors.textDisabled,
                 fontSize: 9,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 height: 1.0,
               ),
             ),
@@ -155,4 +135,3 @@ class AppBottomNav extends StatelessWidget {
     );
   }
 }
-

@@ -1,0 +1,103 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+
+    <!-- Soft pale green background decorative halo -->
+    <path
+        android:fillColor="#E7F3E2"
+        android:pathData="M60,10 C85,10 110,35 110,65 C110,95 85,115 60,115 C30,115 10,95 10,65 C10,35 30,10 60,10 Z" />
+
+    <!-- Organic decorative leaves -->
+    <path
+        android:fillColor="#DDF0D8"
+        android:pathData="M95,25 C102,18 108,22 105,32 C102,38 95,35 95,25 Z" />
+    <path
+        android:fillColor="#DDF0D8"
+        android:pathData="M18,30 C25,24 30,28 28,38 C25,44 18,40 18,30 Z" />
+    <path
+        android:fillColor="#C7DEC0"
+        android:pathData="M98,85 C105,80 108,86 104,94 C100,100 95,94 98,85 Z" />
+
+    <!-- Toddler Head & Ears -->
+    <path
+        android:fillColor="#FFDBAC"
+        android:pathData="M60,32 C50,32 42,40 42,50 C42,60 50,68 60,68 C70,68 78,60 78,50 C78,40 70,32 60,32 Z" />
+    <path
+        android:fillColor="#FFDBAC"
+        android:pathData="M40,48 C38,48 36,50 36,53 C36,56 38,58 40,58 Z" />
+    <path
+        android:fillColor="#FFDBAC"
+        android:pathData="M80,48 C82,48 84,50 84,53 C84,56 82,58 80,58 Z" />
+
+    <!-- Soft Hair Tuft -->
+    <path
+        android:fillColor="#5A3825"
+        android:pathData="M52,34 C55,27 65,27 68,34 C65,31 55,31 52,34 Z" />
+
+    <!-- Eyes (Happy curved arches) -->
+    <path
+        android:strokeColor="#2C1B10"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M51,49 C53,46 56,46 58,49" />
+    <path
+        android:strokeColor="#2C1B10"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M62,49 C64,46 67,46 69,49" />
+
+    <!-- Rosy Cheeks -->
+    <path
+        android:fillColor="#FFB6C1"
+        android:pathData="M48,55 C46,55 45,56 45,58 C45,59 46,60 48,60 C50,60 51,59 51,58 C51,56 50,55 48,55 Z" />
+    <path
+        android:fillColor="#FFB6C1"
+        android:pathData="M72,55 C70,55 69,56 69,58 C69,59 70,60 72,60 C74,60 75,59 75,58 C75,56 74,55 72,55 Z" />
+
+    <!-- Big Happy Toddler Smile -->
+    <path
+        android:strokeColor="#2C1B10"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#E25858"
+        android:pathData="M55,56 C57,62 63,62 65,56 Z" />
+
+    <!-- Green Outfit / Romper -->
+    <path
+        android:fillColor="#176B3A"
+        android:pathData="M46,67 C44,78 44,92 48,96 C52,98 68,98 72,96 C76,92 76,78 74,67 C70,66 50,66 46,67 Z" />
+
+    <!-- Raised Toddler Arms (Celebrating / Cheerful) -->
+    <!-- Left Arm -->
+    <path
+        android:strokeColor="#FFDBAC"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:pathData="M46,70 C36,65 30,52 32,44" />
+    <!-- Left Hand -->
+    <path
+        android:fillColor="#FFDBAC"
+        android:pathData="M32,44 C30,42 34,38 37,41 C38,43 35,47 32,44 Z" />
+
+    <!-- Right Arm -->
+    <path
+        android:strokeColor="#FFDBAC"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:pathData="M74,70 C84,65 90,52 88,44" />
+    <!-- Right Hand -->
+    <path
+        android:fillColor="#FFDBAC"
+        android:pathData="M88,44 C90,42 86,38 83,41 C82,43 85,47 88,44 Z" />
+
+    <!-- Toddler Little Legs & Feet -->
+    <path
+        android:fillColor="#FFDBAC"
+        android:pathData="M50,96 C48,103 47,108 52,109 C56,110 57,105 56,96 Z" />
+    <path
+        android:fillColor="#FFDBAC"
+        android:pathData="M64,96 C63,105 64,110 68,109 C73,108 72,103 70,96 Z" />
+</vector>
+

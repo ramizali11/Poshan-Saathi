@@ -4,7 +4,7 @@ import 'parent_dashboard_screen.dart';
 import 'meal_planner_screen.dart';
 import 'growth_monitoring_screen.dart';
 import 'ai_assistant_screen.dart';
-import 'reminders_screen.dart';
+import 'parent_profile_screen.dart';
 
 class ParentMainScaffold extends StatefulWidget {
   final int initialIndex;
@@ -35,7 +35,7 @@ class _ParentMainScaffoldState extends State<ParentMainScaffold> {
       const MealPlannerScreen(),
       const GrowthMonitoringScreen(),
       const AiAssistantScreen(),
-      const RemindersScreen(),
+      const ParentProfileScreen(),
     ];
 
     return Scaffold(

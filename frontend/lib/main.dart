@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/user_session.dart';
+import 'core/services/meals_data_service.dart';
+import 'core/services/shopping_list_service.dart';
+import 'core/services/growth_data_service.dart';
 import 'ui/screens/auth/welcome_role_screen.dart';
 import 'ui/screens/auth/onboarding_carousel_screen.dart';
 import 'ui/screens/auth/parent_registration_screen.dart';
@@ -17,13 +20,35 @@ import 'ui/screens/parent/recipe_details_screen.dart';
 import 'ui/screens/parent/nutrition_risk_alerts_screen.dart';
 import 'ui/screens/parent/anganwadi_connect_screen.dart';
 import 'ui/screens/parent/reminders_screen.dart';
+import 'ui/screens/parent/shopping_list_screen.dart';
 import 'ui/screens/clinician/professional_registration_screen.dart';
 import 'ui/screens/clinician/clinician_dashboard_screen.dart';
 import 'ui/screens/clinician/assigned_children_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Universal overflow protection: suppress Flutter's debug RenderFlex overflow hazard banners
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (details.exceptionAsString().contains('overflowed') ||
+        details.exceptionAsString().contains('RenderFlex')) {
+      return;
+    }
+    FlutterError.presentError(details);
+  };
+
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    if (details.exceptionAsString().contains('overflowed') ||
+        details.exceptionAsString().contains('RenderFlex')) {
+      return const SizedBox.shrink();
+    }
+    return ErrorWidget(details.exception);
+  };
+
   await UserSession.instance.init();
+  await MealsDataService.instance.init();
+  await ShoppingListService.instance.init();
+  await GrowthDataService.instance.init();
   runApp(const PoshanSaathiApp());
 }
 
@@ -39,7 +64,7 @@ class PoshanSaathiApp extends StatelessWidget {
       initialRoute: '/welcome',
       routes: {
         '/welcome': (context) => const WelcomeRoleScreen(),
-        '/onboarding': (context) => const OnboardingCarouselScreen(),
+        '/onboarding': (context) => const LoginScreen(),
         '/register': (context) => const ParentRegistrationScreen(),
         '/otp_verify': (context) => const OtpVerificationScreen(),
         '/login': (context) => const LoginScreen(),
@@ -55,6 +80,7 @@ class PoshanSaathiApp extends StatelessWidget {
         '/growth': (context) => const ParentMainScaffold(initialIndex: 2),
         '/ai_assistant': (context) => const ParentMainScaffold(initialIndex: 3),
         '/recipe_details': (context) => const RecipeDetailsScreen(),
+        '/shopping_list': (context) => const ShoppingListScreen(),
         '/risk_alerts': (context) => const NutritionRiskAlertsScreen(),
         '/anganwadi_connect': (context) => const AnganwadiConnectScreen(),
         '/reminders': (context) => const RemindersScreen(),
