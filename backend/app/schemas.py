@@ -19,6 +19,19 @@ class VerifyOtpRequest(BaseModel):
     email: str = Field(..., description="Registered email address to verify")
     otp: str = Field(..., min_length=6, max_length=6, description="6-digit verification code")
 
+class SendMobileOtpRequest(BaseModel):
+    phone: str = Field(..., min_length=10, description="10-digit mobile number")
+    name: Optional[str] = Field(None, description="Full Name of user")
+    role: Optional[str] = Field("parent", description="User role: parent, clinician, or admin")
+    language: Optional[str] = Field("English", description="Preferred language")
+
+class VerifyMobileOtpRequest(BaseModel):
+    phone: str = Field(..., min_length=10, description="10-digit mobile number")
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit verification code")
+    name: Optional[str] = Field(None, description="Full Name of user")
+    role: Optional[str] = Field("parent", description="User role: parent, clinician, or admin")
+    language: Optional[str] = Field("English", description="Preferred language")
+
 class ResendOtpRequest(BaseModel):
     email: str = Field(..., description="Registered email address requesting a new OTP")
 
@@ -92,6 +105,7 @@ class AuthResponse(BaseModel):
     user: Optional[UserResponse] = None
     requires_verification: Optional[bool] = False
     email: Optional[str] = None
+    phone: Optional[str] = None
     cooldown_seconds: Optional[int] = None
 
 class OnboardingStep1Request(BaseModel):

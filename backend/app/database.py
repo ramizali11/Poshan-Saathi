@@ -191,6 +191,27 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email);
         """)
 
+        # Create phone_otps table for storing secure mobile OTPs
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS phone_otps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                phone TEXT NOT NULL,
+                otp_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                attempts_count INTEGER DEFAULT 0,
+                max_attempts INTEGER DEFAULT 5,
+                created_at TEXT NOT NULL,
+                last_sent_at TEXT NOT NULL,
+                is_used INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_phone_otps_phone ON phone_otps(phone);
+        """)
+
         # Create password_resets table for storing secure single-use password reset token hashes
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS password_resets (
