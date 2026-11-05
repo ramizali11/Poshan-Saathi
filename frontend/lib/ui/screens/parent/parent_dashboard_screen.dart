@@ -6,8 +6,11 @@ import 'package:frontend/core/theme/app_typography.dart';
 import 'package:frontend/core/widgets/status_badge.dart';
 import 'package:frontend/core/widgets/metric_tile.dart';
 import 'package:frontend/core/models/user_model.dart';
+import 'package:frontend/core/models/child_model.dart';
 import 'package:frontend/core/services/user_session.dart';
-import 'package:frontend/core/data/mock_data.dart';   
+import 'package:frontend/core/services/child_session.dart';
+import 'package:frontend/core/widgets/child_selector_widget.dart';
+import 'package:frontend/core/widgets/missing_field_dialogs.dart';   
 
 class ParentDashboardScreen extends StatefulWidget {
   final VoidCallback? onNavigateToMeals;
@@ -26,8 +29,6 @@ class ParentDashboardScreen extends StatefulWidget {
 }
 
 class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
-  final ChildProfile _child = MockData.defaultChild;
-
   void _showUserProfileModal(BuildContext context, UserModel? user) {
     showModalBottomSheet(
       context: context,
@@ -147,6 +148,16 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (phone != null && phone.isNotEmpty)
                     ? '+91 $phone'
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'phone',
+                    fieldTitle: 'Mobile Number',
+                    hintText: 'e.g. 9876543210',
+                    keyboardType: TextInputType.phone,
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -163,6 +174,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (dob != null && dob.isNotEmpty)
                     ? dob
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'dob',
+                    fieldTitle: 'Date of Birth',
+                    hintText: 'YYYY-MM-DD',
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -171,6 +191,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (address != null && address.isNotEmpty)
                     ? '$address${city != null && city.isNotEmpty ? ", $city" : ""}'
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'address',
+                    fieldTitle: 'Residential Address',
+                    hintText: 'Street / Society / Area',
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -179,6 +208,15 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (district != null || state != null)
                     ? '${district ?? ""}${district != null && state != null ? ", " : ""}${state ?? ""}'
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'district',
+                    fieldTitle: 'District',
+                    hintText: 'e.g. Ahmedabad',
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -187,6 +225,16 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 value: (pinCode != null && pinCode.isNotEmpty)
                     ? pinCode
                     : 'Not added',
+                onAdd: () {
+                  Navigator.pop(ctx);
+                  showAddParentFieldDialog(
+                    context: context,
+                    fieldKey: 'pin_code',
+                    fieldTitle: 'Postal PIN Code',
+                    hintText: 'e.g. 380015',
+                    keyboardType: TextInputType.number,
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildProfileDetailRow(
@@ -254,8 +302,12 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
     required IconData icon,
     required String label,
     required String value,
+    VoidCallback? onAdd,
   }) {
+    final isNotAdded = value == 'Not added' || value.isEmpty;
+
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           padding: const EdgeInsets.all(8),
@@ -277,13 +329,54 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                   fontSize: 11,
                 ),
               ),
-              Text(
-                value,
-                style: AppTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+              if (isNotAdded && onAdd != null)
+                Row(
+                  children: [
+                    Text(
+                      'Not added',
+                      style: AppTypography.bodySmall.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: onAdd,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryContainer,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.add_rounded, size: 12, color: AppColors.primaryDark),
+                            SizedBox(width: 2),
+                            Text(
+                              'Add',
+                              style: TextStyle(
+                                color: AppColors.primaryDark,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Text(
+                  value,
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isNotAdded ? AppColors.textMuted : AppColors.textPrimary,
+                  ),
                 ),
-              ),
             ],
           ),
         ),

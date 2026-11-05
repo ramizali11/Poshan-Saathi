@@ -582,5 +582,482 @@ class TestAuthAndProfile(unittest.TestCase):
 
         print("[OK] Test 14: Strict parent-child data isolation verified.")
 
+    def test_15_health_endpoint_and_keepalive_lifespan(self):
+        """Tests /health endpoint response and validates lifespan background task configuration."""
+        import inspect
+        from app.main import health, app, keep_alive_task
+
+        # 1. Health check returns status ok
+        res = health()
+        self.assertEqual(res, {"status": "ok"})
+
+        # 2. Verify keep_alive_task is an asynchronous coroutine function
+        self.assertTrue(inspect.iscoroutinefunction(keep_alive_task), "keep_alive_task must be an async coroutine function")
+
+        # 3. Verify app has lifespan context configured
+        self.assertIsNotNone(app.router.lifespan_context, "FastAPI app must have lifespan context configured")
+
+        # 4. Verify keep_alive_task generates a valid coroutine
+        coro = keep_alive_task()
+        self.assertTrue(inspect.iscoroutine(coro))
+        coro.close()
+
+        print("[OK] Test 15: /health endpoint and keepalive background task lifespan verified.")
+
+    def test_16_apple_auth_completely_removed(self):
+        """Verifies Apple route does not exist in FastAPI route table and schemas."""
+        from app.main import app
+        import app.schemas as schemas
+        import app.oauth_service as oauth_service
+
+        # 1. No /apple route in app routes
+        route_paths = [getattr(route, "path", "") for route in app.routes if hasattr(route, "path")]
+        self.assertNotIn("/api/auth/apple", route_paths)
+        self.assertNotIn("/auth/apple", route_paths)
+
+        # 2. No AppleAuthRequest schema
+        self.assertFalse(hasattr(schemas, "AppleAuthRequest"), "AppleAuthRequest must not exist in schemas")
+
+        # 3. No Apple functions in oauth_service
+        self.assertFalse(hasattr(oauth_service, "verify_apple_identity_token"), "verify_apple_identity_token must not exist")
+        self.assertFalse(hasattr(oauth_service, "get_apple_public_keys"), "get_apple_public_keys must not exist")
+        self.assertFalse(hasattr(oauth_service, "APPLE_CLIENT_ID"), "APPLE_CLIENT_ID must not exist")
+
+        print("[OK] Test 16: Apple Sign-In routes, functions, and schemas completely removed.")
+
+    def test_17_child_update_and_weight_persistence(self):
+        """Verifies updating child weight and details, and prevents cross-parent updates."""
+        from app.routers.auth import update_child, add_single_child
+        from app.schemas import ChildUpdateRequest, ChildCreateRequest
+
+        ts = int(datetime.now().timestamp())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Parent Test 17', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p17_{ts}@gmail.com", now))
+            parent_id = cursor.lastrowid
+            
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Other Parent 17', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p17_other_{ts}@gmail.com", now))
+            other_parent_id = cursor.lastrowid
+            conn.commit()
+
+        token_parent = generate_token(parent_id, None)
+        token_other = generate_token(other_parent_id, None)
+
+        # 1. Add child with missing weight
+        created = add_single_child(
+            req=ChildCreateRequest(name="Rehan", dob="2024-03-15", gender="Boy", weight=None),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(created.name, "Rehan")
+        self.assertIsNone(created.weight)
+
+        # 2. Update weight via PATCH /children/{child_id}
+        updated = update_child(
+            child_id=created.id,
+            req=ChildUpdateRequest(weight=12.4),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(updated.weight, 12.4)
+        self.assertIsNotNone(updated.updated_at)
+
+        # 3. Other parent attempts to update this child -> must return 404
+        with self.assertRaises(HTTPException) as ctx:
+            update_child(
+                child_id=created.id,
+                req=ChildUpdateRequest(weight=15.0),
+                authorization=f"Bearer {token_other}"
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+        print("[OK] Test 17: Child update, weight persistence, and isolation verified.")
+
+
+    def test_18_child_height_measurements(self):
+        """
+        Verifies:
+        - Creation of accurate child height measurements in cm.
+        - Consecutive growth difference calculation (+1.5 cm, +1.8 cm).
+        - Update and delete of measurements.
+        - Input validation (rejects invalid heights).
+        - Multi-tenancy isolation between caregivers.
+        """
+        from app.routers.auth import (
+            add_single_child,
+            get_child_height_measurements,
+            add_child_height_measurement,
+            update_child_height_measurement,
+            delete_child_height_measurement,
+        )
+        from app.schemas import (
+            ChildCreateRequest,
+            HeightMeasurementCreate,
+            HeightMeasurementUpdate,
+        )
+
+        ts = int(datetime.now().timestamp())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Parent Test 18', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p18_{ts}@gmail.com", now))
+            parent_id = cursor.lastrowid
+            
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Other Parent 18', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p18_other_{ts}@gmail.com", now))
+            other_parent_id = cursor.lastrowid
+            conn.commit()
+
+        token_parent = generate_token(parent_id, None)
+        token_other = generate_token(other_parent_id, None)
+
+        # 1. Register child
+        child = add_single_child(
+            req=ChildCreateRequest(name="Ananya", dob="2024-01-01", gender="Girl"),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(child.name, "Ananya")
+
+        # 2. Initially no height records
+        initial_records = get_child_height_measurements(
+            child_id=child.id,
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(len(initial_records), 0)
+
+        # 3. Add first height: 72.5 cm on 2026-01-10
+        m1 = add_child_height_measurement(
+            child_id=child.id,
+            req=HeightMeasurementCreate(height_cm=72.5, measurement_date="2026-01-10", notes="First record"),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(m1.height_cm, 72.5)
+        self.assertIsNone(m1.diff_from_previous)
+
+        # 4. Add second height: 74.0 cm on 2026-02-10 -> diff should be +1.5 cm
+        m2 = add_child_height_measurement(
+            child_id=child.id,
+            req=HeightMeasurementCreate(height_cm=74.0, measurement_date="2026-02-10"),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(m2.height_cm, 74.0)
+        self.assertEqual(m2.diff_from_previous, 1.5)
+
+        # 5. Add third height: 75.8 cm on 2026-03-10 -> diff should be +1.8 cm
+        m3 = add_child_height_measurement(
+            child_id=child.id,
+            req=HeightMeasurementCreate(height_cm=75.8, measurement_date="2026-03-10"),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(m3.height_cm, 75.8)
+        self.assertEqual(m3.diff_from_previous, 1.8)
+
+        # 6. Fetch all measurements in order
+        history = get_child_height_measurements(
+            child_id=child.id,
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(len(history), 3)
+        self.assertEqual(history[0].height_cm, 72.5)
+        self.assertIsNone(history[0].diff_from_previous)
+        self.assertEqual(history[1].height_cm, 74.0)
+        self.assertEqual(history[1].diff_from_previous, 1.5)
+        self.assertEqual(history[2].height_cm, 75.8)
+        self.assertEqual(history[2].diff_from_previous, 1.8)
+
+        # 7. Update second measurement: correct to 74.2 cm
+        updated_m2 = update_child_height_measurement(
+            child_id=child.id,
+            measurement_id=m2.id,
+            req=HeightMeasurementUpdate(height_cm=74.2),
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(updated_m2.height_cm, 74.2)
+
+        # 8. Delete third measurement
+        del_res = delete_child_height_measurement(
+            child_id=child.id,
+            measurement_id=m3.id,
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertTrue(del_res.success)
+
+        # Confirm length is now 2
+        history_after_del = get_child_height_measurements(
+            child_id=child.id,
+            authorization=f"Bearer {token_parent}"
+        )
+        self.assertEqual(len(history_after_del), 2)
+
+        # 9. Validation: reject negative or absurd height
+        with self.assertRaises(Exception):
+            HeightMeasurementCreate(height_cm=15.0)
+        with self.assertRaises(Exception):
+            HeightMeasurementCreate(height_cm=300.0)
+
+        # 10. Multi-tenancy: other parent cannot access Ananya's records
+        with self.assertRaises(HTTPException) as ctx:
+            get_child_height_measurements(
+                child_id=child.id,
+                authorization=f"Bearer {token_other}"
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+        print("[OK] Test 18: Child height measurements, diff calculations, and multi-tenant isolation verified.")
+
+    def test_19_ai_chatbot_endpoints(self):
+        """
+        Verifies:
+        - Child & caregiver context extraction for AI system prompt.
+        - Clinical safety instructions: Honey ban for <12m, choking hazard warnings, non-medical disclaimer.
+        - Personalization: Child name, weight, height, and growth diff injected.
+        - Conversation creation (POST /api/chat/new).
+        - Message sending & persistence in SQLite (POST /api/chat/send).
+        - Conversation history retrieval (GET /api/chat/history).
+        - Message detail retrieval (GET /api/chat/history/{id}).
+        - Conversation deletion (DELETE /api/chat/history/{id}).
+        - Multi-tenant isolation between caregivers (404 / no cross-account leaks).
+        """
+        import asyncio
+        from unittest.mock import patch, AsyncMock
+        from app.routers.chat import (
+            send_chat_message,
+            create_new_conversation,
+            get_chat_history,
+            get_conversation_messages,
+            delete_conversation,
+        )
+        from app.schemas import (
+            ChatSendMessageRequest,
+            ChatNewConversationRequest,
+        )
+        from app.ai_service import get_child_and_parent_context, build_system_prompt
+
+        ts = int(datetime.now().timestamp())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Vikram Rao', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p19_{ts}@gmail.com", now))
+            parent_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Other Parent 19', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p19_other_{ts}@gmail.com", now))
+            other_parent_id = cursor.lastrowid
+
+            # Add child for Vikram
+            cursor.execute("""
+                INSERT INTO children (parent_id, name, dob, weight, gender, created_at)
+                VALUES (?, 'Aarohi', '2025-06-10', 8.5, 'Girl', ?)
+            """, (parent_id, now))
+            child_id = cursor.lastrowid
+
+            # Add height measurements
+            cursor.execute("""
+                INSERT INTO child_height_measurements (child_id, parent_id, height_cm, measurement_date, created_at, updated_at)
+                VALUES (?, ?, 71.0, '2026-02-01', ?, ?)
+            """, (child_id, parent_id, now, now))
+            cursor.execute("""
+                INSERT INTO child_height_measurements (child_id, parent_id, height_cm, measurement_date, created_at, updated_at)
+                VALUES (?, ?, 72.8, '2026-03-01', ?, ?)
+            """, (child_id, parent_id, now, now))
+            conn.commit()
+
+        token_parent = generate_token(parent_id, None)
+        token_other = generate_token(other_parent_id, None)
+        auth_parent = f"Bearer {token_parent}"
+        auth_other = f"Bearer {token_other}"
+
+        # 1. Test context extraction & prompt generation
+        ctx = get_child_and_parent_context(user_id=parent_id, child_id=child_id)
+        self.assertEqual(ctx["parent_name"], "Vikram Rao")
+        self.assertEqual(ctx["child_name"], "Aarohi")
+        self.assertIn("8.5 kg", ctx["weight_display"])
+        self.assertIn("72.8 cm", ctx["height_display"])
+        self.assertIn("+1.8 cm", ctx["recent_growth"])
+
+        prompt = build_system_prompt(ctx)
+        self.assertIn("Strictly NEVER recommend honey", prompt)
+        self.assertIn("botulism", prompt.lower())
+        self.assertIn("choking hazards", prompt.lower())
+        self.assertIn("Vikram Rao", prompt)
+        self.assertIn("Aarohi", prompt)
+        self.assertIn("72.8 cm", prompt)
+
+        # 2. Test create_new_conversation
+        conv = create_new_conversation(
+            req=ChatNewConversationRequest(child_id=child_id, title="Aarohi Nutrition Plan"),
+            authorization=auth_parent
+        )
+        self.assertEqual(conv.title, "Aarohi Nutrition Plan")
+        self.assertEqual(conv.child_name, "Aarohi")
+        conv_id = conv.id
+
+        # 3. Test send_chat_message with mocked AI response
+        def run_coro(coro):
+            try:
+                while True:
+                    sub = coro.send(None)
+                    try:
+                        sub.send(None)
+                    except StopIteration:
+                        pass
+            except StopIteration as e:
+                return e.value
+
+        async def mock_generate_ai(*args, **kwargs):
+            return "For 9-month-old Aarohi, introduce well-cooked mashed dal khichdi."
+
+        with patch("app.routers.chat.generate_ai_chat_response", side_effect=mock_generate_ai):
+            send_res = run_coro(send_chat_message(
+                req=ChatSendMessageRequest(
+                    message="What are good lunch options for Aarohi?",
+                    conversation_id=conv_id,
+                    child_id=child_id
+                ),
+                authorization=auth_parent
+            ))
+            self.assertEqual(send_res.conversation_id, conv_id)
+            self.assertEqual(send_res.reply, "For 9-month-old Aarohi, introduce well-cooked mashed dal khichdi.")
+            self.assertEqual(send_res.child_name, "Aarohi")
+
+        # 4. Check conversation history
+        history = get_chat_history(authorization=auth_parent)
+        self.assertTrue(len(history) >= 1)
+        self.assertEqual(history[0].id, conv_id)
+        self.assertIn("khichdi", history[0].last_message.lower())
+
+        # 5. Check conversation messages
+        detail = get_conversation_messages(conversation_id=conv_id, authorization=auth_parent)
+        self.assertEqual(detail.id, conv_id)
+        self.assertEqual(len(detail.messages), 2)
+        self.assertEqual(detail.messages[0].sender_role, "user")
+        self.assertEqual(detail.messages[1].sender_role, "assistant")
+
+        # 6. Multi-tenant isolation: other parent cannot view or delete
+        other_history = get_chat_history(authorization=auth_other)
+        self.assertNotIn(conv_id, [c.id for c in other_history])
+
+        with self.assertRaises(HTTPException) as err:
+            get_conversation_messages(conversation_id=conv_id, authorization=auth_other)
+        self.assertEqual(err.exception.status_code, 404)
+
+        with self.assertRaises(HTTPException) as err:
+            delete_conversation(conversation_id=conv_id, authorization=auth_other)
+        self.assertEqual(err.exception.status_code, 404)
+
+        # 7. Delete conversation
+        del_res = delete_conversation(conversation_id=conv_id, authorization=auth_parent)
+        self.assertTrue(del_res.success)
+
+        # Confirm deleted
+        with self.assertRaises(HTTPException) as err:
+            get_conversation_messages(conversation_id=conv_id, authorization=auth_parent)
+        self.assertEqual(err.exception.status_code, 404)
+
+        print("[OK] Test 19: AI chatbot endpoints, context injection, clinical safety, and multi-tenant isolation verified.")
+
+    def test_20_ai_streaming_endpoint(self):
+        """
+        Verifies:
+        - Streaming chat endpoint (POST /api/chat/stream) validation and authorization.
+        - StreamingResponse with text/event-stream media type.
+        - Proper SSE headers (no-cache, keep-alive, no-buffering).
+        - User message persistence in SQLite upon stream initialization.
+        """
+        from app.routers.chat import stream_chat_message
+        from app.schemas import ChatSendMessageRequest
+
+        ts = int(datetime.now().timestamp())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (name, phone, email, password_hash, salt, role, is_verified, auth_provider, is_profile_complete, onboarding_step, created_at)
+                VALUES ('Stream Parent 20', NULL, ?, 'OAUTH', 'SALT', 'parent', 1, 'google', 1, 2, ?)
+            """, (f"p20_{ts}@gmail.com", now))
+            parent_id = cursor.lastrowid
+            cursor.execute("""
+                INSERT INTO children (parent_id, name, dob, weight, gender, created_at)
+                VALUES (?, 'Vihan', '2025-04-10', 9.0, 'Boy', ?)
+            """, (parent_id, now))
+            child_id = cursor.lastrowid
+            conn.commit()
+
+        token = generate_token(parent_id, None)
+        auth_header = f"Bearer {token}"
+
+        def run_coro(coro):
+            try:
+                while True:
+                    sub = coro.send(None)
+                    try:
+                        sub.send(None)
+                    except StopIteration:
+                        pass
+            except StopIteration as e:
+                return e.value
+
+        # 1. Unauthorized request rejected with 401
+        with self.assertRaises(HTTPException) as err:
+            run_coro(stream_chat_message(
+                req=ChatSendMessageRequest(message="Hello"),
+                authorization=None
+            ))
+        self.assertEqual(err.exception.status_code, 401)
+
+        # 2. Empty message rejected with 400
+        with self.assertRaises(HTTPException) as err:
+            run_coro(stream_chat_message(
+                req=ChatSendMessageRequest(message="   "),
+                authorization=auth_header
+            ))
+        self.assertEqual(err.exception.status_code, 400)
+
+        # 3. Valid streaming request returns StreamingResponse with proper SSE headers
+        resp = run_coro(stream_chat_message(
+            req=ChatSendMessageRequest(message="What grain is good for Vihan?", child_id=child_id),
+            authorization=auth_header
+        ))
+        self.assertEqual(resp.media_type, "text/event-stream")
+        self.assertEqual(resp.headers.get("Cache-Control"), "no-cache")
+        self.assertEqual(resp.headers.get("Connection"), "keep-alive")
+        self.assertEqual(resp.headers.get("X-Accel-Buffering"), "no")
+
+        # 4. Verify user message was persisted in SQLite
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT m.content, m.sender_role, c.child_id 
+                FROM chat_messages m
+                JOIN chat_conversations c ON m.conversation_id = c.id
+                WHERE c.user_id = ? AND m.sender_role = 'user'
+                ORDER BY m.id DESC LIMIT 1
+            """, (parent_id,))
+            saved = cursor.fetchone()
+            self.assertIsNotNone(saved)
+            self.assertEqual(saved["content"], "What grain is good for Vihan?")
+            self.assertEqual(saved["child_id"], child_id)
+
+        print("[OK] Test 20: AI streaming endpoint, SSE headers, and database persistence verified.")
+
 if __name__ == "__main__":
     unittest.main()

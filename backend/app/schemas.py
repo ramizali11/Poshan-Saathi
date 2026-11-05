@@ -49,17 +49,6 @@ class GoogleAuthRequest(BaseModel):
     state: Optional[str] = Field(None, description="State")
     district: Optional[str] = Field(None, description="District")
 
-class AppleAuthRequest(BaseModel):
-    identity_token: str = Field(..., min_length=10, description="Apple Identity Token (JWT) from Apple Sign-In")
-    authorization_code: Optional[str] = Field(None, description="Apple authorization code")
-    first_name: Optional[str] = Field(None, description="Given name (sent only on first login)")
-    last_name: Optional[str] = Field(None, description="Family name (sent only on first login)")
-    email: Optional[str] = Field(None, description="Email address (sent only on first login or private relay)")
-    role: Optional[str] = Field("parent", description="User role: parent or clinician")
-    language: Optional[str] = Field(None, description="Preferred language")
-    state: Optional[str] = Field(None, description="State")
-    district: Optional[str] = Field(None, description="District")
-
 class UpdateProfileRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100, description="Full Name")
     phone: Optional[str] = Field(None, description="10-digit mobile number")
@@ -125,6 +114,12 @@ class ChildCreateRequest(BaseModel):
     weight: Optional[float] = Field(None, ge=0.5, le=100.0, description="Child's weight in kg (OPTIONAL)")
     gender: str = Field(..., min_length=1, max_length=20, description="Child's gender: Boy, Girl, Other (REQUIRED)")
 
+class ChildUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="Child's full name")
+    dob: Optional[str] = Field(None, min_length=4, max_length=20, description="Child's date of birth")
+    weight: Optional[float] = Field(None, ge=0.5, le=100.0, description="Child's weight in kg")
+    gender: Optional[str] = Field(None, min_length=1, max_length=20, description="Child's gender: Boy, Girl, Other")
+
 class ChildrenBatchCreateRequest(BaseModel):
     children: List[ChildCreateRequest] = Field(default_factory=list, description="List of children to add")
 
@@ -137,3 +132,72 @@ class ChildResponse(BaseModel):
     gender: str
     created_at: str
     updated_at: Optional[str] = None
+
+
+class HeightMeasurementCreate(BaseModel):
+    height_cm: float = Field(..., gt=20.0, lt=250.0, description="Measured height in centimetres (cm)")
+    measurement_date: Optional[str] = Field(None, description="Date of measurement (YYYY-MM-DD)")
+    notes: Optional[str] = Field("", max_length=500, description="Optional notes")
+
+class HeightMeasurementUpdate(BaseModel):
+    height_cm: Optional[float] = Field(None, gt=20.0, lt=250.0, description="Measured height in centimetres (cm)")
+    measurement_date: Optional[str] = Field(None, description="Date of measurement (YYYY-MM-DD)")
+    notes: Optional[str] = Field(None, max_length=500, description="Optional notes")
+
+class HeightMeasurementResponse(BaseModel):
+    id: int
+    child_id: int
+    parent_id: int
+    height_cm: float
+    measurement_date: str
+    notes: Optional[str] = ""
+    created_at: str
+    updated_at: str
+    diff_from_previous: Optional[float] = None
+
+
+# ============================================================================
+# AI CHATBOT SCHEMAS
+# ============================================================================
+
+class ChatSendMessageRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000, description="Parent's message/question")
+    conversation_id: Optional[int] = Field(None, description="Active conversation ID, or None to start a new conversation")
+    child_id: Optional[int] = Field(None, description="Active child ID to personalize guidance")
+
+class ChatNewConversationRequest(BaseModel):
+    child_id: Optional[int] = Field(None, description="Active child ID to associate with the new conversation")
+    title: Optional[str] = Field("Nutrition Advice", max_length=100, description="Conversation title")
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    conversation_id: int
+    sender_role: str
+    content: str
+    created_at: str
+
+class ChatSendMessageResponse(BaseModel):
+    conversation_id: int
+    message_id: int
+    reply: str
+    created_at: str
+    child_id: Optional[int] = None
+    child_name: Optional[str] = None
+
+class ChatConversationSummary(BaseModel):
+    id: int
+    title: str
+    child_id: Optional[int] = None
+    child_name: Optional[str] = None
+    last_message: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+class ChatConversationDetail(BaseModel):
+    id: int
+    title: str
+    child_id: Optional[int] = None
+    child_name: Optional[str] = None
+    created_at: str
+    updated_at: str
+    messages: List[ChatMessageResponse] = []

@@ -253,6 +253,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 20),
               ],
             ),
             const SizedBox(height: 12),

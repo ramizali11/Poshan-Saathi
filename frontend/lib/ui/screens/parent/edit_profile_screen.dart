@@ -4,6 +4,9 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/services/user_session.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/models/child_model.dart';
+import '../../../core/services/child_session.dart';
+import '../../../core/widgets/missing_field_dialogs.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -370,6 +373,127 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           },
                         ),
                       ]),
+                      const SizedBox(height: 20),
+
+                      // Children Profiles Section
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildSectionTitle('Registered Children (બાળકની વિગતો)'),
+                          TextButton.icon(
+                            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                            onPressed: () => showAddNewChildDialog(context),
+                            icon: const Icon(Icons.add, size: 16, color: AppColors.primary),
+                            label: const Text('+ Add Child', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                          ),
+                        ],
+                      ),
+                      ValueListenableBuilder<List<ChildModel>>(
+                        valueListenable: ChildSession.instance.childrenNotifier,
+                        builder: (context, children, _) {
+                          if (children.isEmpty) {
+                            return _buildCard([
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: Center(
+                                  child: Column(
+                                    children: [
+                                      const Icon(Icons.child_care_rounded, size: 36, color: AppColors.textMuted),
+                                      const SizedBox(height: 6),
+                                      const Text('No child profile registered yet', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                                      const SizedBox(height: 8),
+                                      OutlinedButton.icon(
+                                        onPressed: () => showAddNewChildDialog(context),
+                                        icon: const Icon(Icons.add, size: 16),
+                                        label: const Text('Add Child Profile', style: TextStyle(fontSize: 12)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ]);
+                          }
+
+                          return _buildCard(
+                            children.map((child) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: AppColors.primaryContainer,
+                                      child: Text(
+                                        child.shortInitials,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primaryDark,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            child.name,
+                                            style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.bold),
+                                          ),
+                                          Text(
+                                            '${child.gender.isNotEmpty ? '${child.gender} • ' : ''}${child.ageDisplay}${child.dob != null ? ' (DOB: ${child.dob})' : ''}',
+                                            style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary, fontSize: 11),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    if (child.hasWeight)
+                                      InkWell(
+                                        onTap: () => showAddChildWeightDialog(context, child),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.surfaceVariant,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: AppColors.border),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                '${child.weightDisplay} kg',
+                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textPrimary),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              const Icon(Icons.edit, size: 12, color: AppColors.textMuted),
+                                            ],
+                                          ),
+                                        ),
+                                      )
+                                    else
+                                      InkWell(
+                                        onTap: () => showAddChildWeightDialog(context, child),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Text(
+                                            '+ Add Weight',
+                                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 24),
 
                       // Save Button

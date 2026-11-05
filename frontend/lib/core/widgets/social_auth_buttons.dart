@@ -29,9 +29,8 @@ class SocialAuthButtons extends StatefulWidget {
 
 class _SocialAuthButtonsState extends State<SocialAuthButtons> {
   bool _isGoogleLoading = false;
-  bool _isAppleLoading = false;
 
-  bool get _isProcessing => _isGoogleLoading || _isAppleLoading;
+  bool get _isProcessing => _isGoogleLoading;
 
   Future<void> _handleGoogleSignIn() async {
     if (_isProcessing) return;
@@ -63,39 +62,6 @@ class _SocialAuthButtonsState extends State<SocialAuthButtons> {
       if (!mounted) return;
       setState(() => _isGoogleLoading = false);
       widget.onAuthError('Google sign-in could not be completed. Please try again.');
-    }
-  }
-
-  Future<void> _handleAppleSignIn() async {
-    if (_isProcessing) return;
-
-    setState(() => _isAppleLoading = true);
-
-    try {
-      final result = await SocialAuthService.instance.signInWithApple(
-        role: widget.role,
-        language: widget.language,
-        state: widget.state,
-        district: widget.district,
-      );
-
-      if (!mounted) return;
-      setState(() => _isAppleLoading = false);
-
-      if (result.isCancelled) {
-        // User cancelled dialog - do nothing
-        return;
-      }
-
-      if (result.success) {
-        widget.onAuthSuccess();
-      } else {
-        widget.onAuthError(result.message);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isAppleLoading = false);
-      widget.onAuthError('Apple sign-in could not be completed. Please try again.');
     }
   }
 
@@ -155,44 +121,6 @@ class _SocialAuthButtonsState extends State<SocialAuthButtons> {
                 widget.isRegistration ? 'Sign up with Google' : 'Continue with Google',
                 style: AppTypography.labelLarge.copyWith(
                   color: const Color(0xFF1F1F1F),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        // Apple Sign-In Button
-        ElevatedButton(
-          onPressed: _isProcessing ? null : _handleAppleSignIn,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.black,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (_isAppleLoading)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-              else
-                const Icon(Icons.apple, color: Colors.white, size: 22),
-              const SizedBox(width: 10),
-              Text(
-                widget.isRegistration ? 'Sign up with Apple' : 'Continue with Apple',
-                style: AppTypography.labelLarge.copyWith(
-                  color: Colors.white,
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),

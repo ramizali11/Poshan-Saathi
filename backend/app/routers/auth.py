@@ -20,7 +20,7 @@ from ..security import (
     hash_reset_token,
 )
 from ..email_service import send_otp_email, send_password_reset_email, mask_email
-from ..oauth_service import verify_google_id_token, verify_apple_identity_token
+from ..oauth_service import verify_google_id_token
 from ..schemas import (
     UserRegisterRequest,
     UserLoginRequest,
@@ -29,13 +29,13 @@ from ..schemas import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
     GoogleAuthRequest,
-    AppleAuthRequest,
     UpdateProfileRequest,
     GenericMessageResponse,
     UserResponse,
     AuthResponse,
     OnboardingStep1Request,
     ChildCreateRequest,
+    ChildUpdateRequest,
     ChildrenBatchCreateRequest,
     ChildResponse,
     SendMobileOtpRequest,
@@ -1566,137 +1566,6 @@ def google_auth(req: GoogleAuthRequest):
             email=user_row["email"]
         )
 
-@router.post("/apple", response_model=AuthResponse)
-def apple_auth(req: AppleAuthRequest):
-    """
-    Authenticates or registers a caregiver via verified Apple Identity Token.
-    1. Cryptographically verifies Apple JWT signature with Apple's JWKS.
-    2. Handles Apple private relay email addresses and missing names on subsequent logins.
-    3. Maps or safely links to user account in oauth_accounts.
-    4. Issues standard application session token.
-    """
-    try:
-        apple_user = verify_apple_identity_token(req.identity_token)
-    except ValueError as ve:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Apple authentication failed: {str(ve)}"
-        )
-
-    sub = apple_user["sub"]
-    # Email from token claims takes priority; fallback to request payload (sent on first authorization)
-    email = apple_user.get("email") or (req.email.strip().lower() if req.email else None)
-
-    # Compute full name if provided on first authorization
-    first_name = (req.first_name or "").strip()
-    last_name = (req.last_name or "").strip()
-    full_name = f"{first_name} {last_name}".strip()
-    if not full_name:
-        full_name = "Apple User"
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-
-        # Step 1: Check oauth_accounts for existing Apple mapping
-        cursor.execute("""
-            SELECT user_id FROM oauth_accounts
-            WHERE provider = 'apple' AND provider_user_id = ?
-        """, (sub,))
-        oauth_row = cursor.fetchone()
-
-        user_id = None
-        if oauth_row:
-            user_id = oauth_row["user_id"]
-        elif email:
-            # Step 2: Check if an existing account shares this email
-            cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
-            existing_user = cursor.fetchone()
-            if existing_user:
-                user_id = existing_user["id"]
-                now_str = datetime.now(timezone.utc).isoformat()
-                cursor.execute("""
-                    INSERT OR IGNORE INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
-                    VALUES (?, 'apple', ?, ?, ?)
-                """, (user_id, sub, email, now_str))
-                cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
-                conn.commit()
-
-        # Step 3: Create new user if not found with NULL phone
-        if not user_id:
-            now = datetime.now(timezone.utc)
-            created_at = now.isoformat()
-
-            cursor.execute("""
-                INSERT INTO users (name, phone, email, password_hash, salt, role, language, state, district,
-                                  dob, gender, address, city, pin_code, avatar_url, is_verified, auth_provider,
-                                  is_profile_complete, onboarding_step, created_at)
-                VALUES (?, NULL, ?, 'OAUTH_APPLE', 'OAUTH_SALT', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'apple', 0, 0, ?)
-            """, (
-                full_name,
-                email,
-                req.role or "parent",
-                req.language or "ગુજરાતી (Gujarati)",
-                req.state,
-                req.district,
-                created_at
-            ))
-            user_id = cursor.lastrowid
-
-            cursor.execute("""
-                INSERT INTO oauth_accounts (user_id, provider, provider_user_id, email, created_at)
-                VALUES (?, 'apple', ?, ?, ?)
-            """, (user_id, sub, email, created_at))
-            conn.commit()
-
-        # Step 4: Fetch user record and return standard session token
-        cursor.execute("""
-            SELECT id, name, phone, email, role, language, state, district,
-                   dob, gender, address, city, pin_code, avatar_url, auth_provider, is_verified,
-                   is_profile_complete, onboarding_step, created_at
-            FROM users WHERE id = ?
-        """, (user_id,))
-        user_row = cursor.fetchone()
-        if not user_row:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not load authenticated user profile."
-            )
-
-        safe_phone = sanitize_phone_value(user_row["phone"])
-        if user_row["phone"] and not safe_phone:
-            cursor.execute("UPDATE users SET phone = NULL WHERE id = ?", (user_id,))
-            conn.commit()
-
-        token = generate_token(user_row["id"], safe_phone)
-        return AuthResponse(
-            success=True,
-            message="Apple Sign-In successful.",
-            token=token,
-            user=UserResponse(
-                id=user_row["id"],
-                name=user_row["name"],
-                phone=safe_phone,
-                email=user_row["email"],
-                role=user_row["role"] or "parent",
-                language=user_row["language"] or "ગુજરાતી (Gujarati)",
-                state=user_row["state"],
-                district=user_row["district"],
-                dob=user_row["dob"],
-                gender=user_row["gender"],
-                address=user_row["address"],
-                city=user_row["city"],
-                pin_code=user_row["pin_code"],
-                avatar_url=user_row["avatar_url"],
-                auth_provider=user_row["auth_provider"] or "apple",
-                is_verified=True,
-                is_profile_complete=bool(user_row["is_profile_complete"]),
-                onboarding_step=int(user_row["onboarding_step"] or 0),
-                created_at=user_row["created_at"]
-            ),
-            requires_verification=False,
-            email=user_row["email"]
-        )
-
 # ============================================================================
 # Two-Step Onboarding & Children Management Endpoints
 # ============================================================================
@@ -2074,4 +1943,388 @@ def add_single_child(
             weight=req.weight,
             gender=clean_gender,
             created_at=now_str
+        )
+
+@router.patch("/children/{child_id}", response_model=ChildResponse)
+@router.put("/children/{child_id}", response_model=ChildResponse)
+@children_router.patch("/{child_id}", response_model=ChildResponse)
+@children_router.put("/{child_id}", response_model=ChildResponse)
+def update_child(
+    child_id: int,
+    req: ChildUpdateRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Updates an existing child's information (such as weight, name, dob, gender).
+    Enforces strict multi-tenancy: only the authenticated parent can update their own child.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, parent_id, name, dob, weight, gender, created_at FROM children WHERE id = ? AND parent_id = ?", (child_id, parent_id))
+        child_row = cursor.fetchone()
+        if not child_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Child profile not found or does not belong to the authenticated caregiver."
+            )
+
+        updates = []
+        params = []
+
+        if req.name is not None and req.name.strip():
+            updates.append("name = ?")
+            params.append(req.name.strip())
+
+        if req.dob is not None and req.dob.strip():
+            updates.append("dob = ?")
+            params.append(req.dob.strip())
+
+        if req.weight is not None:
+            if req.weight <= 0 or req.weight > 100:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please enter a valid weight in kg (between 0.5 and 100).")
+            updates.append("weight = ?")
+            params.append(float(req.weight))
+
+        if req.gender is not None and req.gender.strip():
+            clean_gender = req.gender.strip()
+            if clean_gender not in ("Boy", "Girl", "Other"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Child gender must be 'Boy', 'Girl', or 'Other'.")
+            updates.append("gender = ?")
+            params.append(clean_gender)
+
+        now_str = datetime.now(timezone.utc).isoformat()
+        updates.append("updated_at = ?")
+        params.append(now_str)
+
+        if updates:
+            params.extend([child_id, parent_id])
+            cursor.execute(f"UPDATE children SET {', '.join(updates)} WHERE id = ? AND parent_id = ?", tuple(params))
+
+        # Also mirror into child_profiles if exists
+        child_profile_updates = ["created_at = created_at"]
+        cp_params = []
+        if req.name is not None and req.name.strip():
+            child_profile_updates.append("name = ?")
+            cp_params.append(req.name.strip())
+        if req.dob is not None and req.dob.strip():
+            child_profile_updates.append("dob = ?")
+            cp_params.append(req.dob.strip())
+        if req.weight is not None:
+            child_profile_updates.append("current_weight_kg = ?")
+            cp_params.append(float(req.weight))
+        if req.gender is not None and req.gender.strip():
+            child_profile_updates.append("gender = ?")
+            cp_params.append(req.gender.strip())
+        if len(child_profile_updates) > 1:
+            cp_params.extend([parent_id, child_row["name"]])
+            cursor.execute(f"UPDATE child_profiles SET {', '.join(child_profile_updates)} WHERE user_id = ? AND name = ?", tuple(cp_params))
+
+        conn.commit()
+
+        # Fetch updated row
+        cursor.execute("SELECT id, parent_id, name, dob, weight, gender, created_at, updated_at FROM children WHERE id = ?", (child_id,))
+        updated_row = cursor.fetchone()
+
+        return ChildResponse(
+            id=updated_row["id"],
+            parent_id=updated_row["parent_id"],
+            name=updated_row["name"],
+            dob=updated_row["dob"],
+            weight=updated_row["weight"],
+            gender=updated_row["gender"],
+            created_at=updated_row["created_at"],
+            updated_at=updated_row["updated_at"]
+        )
+
+
+# ============================================================================
+# CHILD HEIGHT MEASUREMENT & GROWTH TRACKING ENDPOINTS
+# ============================================================================
+
+@router.get("/children/{child_id}/heights", response_model=List[HeightMeasurementResponse])
+@children_router.get("/{child_id}/heights", response_model=List[HeightMeasurementResponse])
+def get_child_height_measurements(
+    child_id: int,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Retrieves all actual height measurements for a specific child.
+    - Requires authenticated parent bearer token.
+    - Strictly prevents unauthorized access across parents.
+    - Calculates growth differences between consecutive chronological measurements.
+    - Never fabricates random or synthetic measurements.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM children WHERE id = ? AND parent_id = ?", (child_id, parent_id))
+        child_row = cursor.fetchone()
+        if not child_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Child profile not found or does not belong to the authenticated caregiver."
+            )
+
+        cursor.execute("""
+            SELECT id, child_id, parent_id, height_cm, measurement_date, notes, created_at, updated_at
+            FROM child_height_measurements
+            WHERE child_id = ? AND parent_id = ?
+            ORDER BY measurement_date ASC, id ASC
+        """, (child_id, parent_id))
+        rows = cursor.fetchall()
+
+        results: List[HeightMeasurementResponse] = []
+        prev_height = None
+        for row in rows:
+            diff = None
+            if prev_height is not None:
+                diff = round(row["height_cm"] - prev_height, 2)
+            prev_height = row["height_cm"]
+
+            results.append(HeightMeasurementResponse(
+                id=row["id"],
+                child_id=row["child_id"],
+                parent_id=row["parent_id"],
+                height_cm=round(row["height_cm"], 2),
+                measurement_date=row["measurement_date"],
+                notes=row["notes"] or "",
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                diff_from_previous=diff
+            ))
+
+        return results
+
+
+@router.post("/children/{child_id}/heights", response_model=HeightMeasurementResponse, status_code=status.HTTP_201_CREATED)
+@children_router.post("/{child_id}/heights", response_model=HeightMeasurementResponse, status_code=status.HTTP_201_CREATED)
+def add_child_height_measurement(
+    child_id: int,
+    req: HeightMeasurementCreate,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Records a new accurate height measurement in centimetres (cm).
+    - Validates positive, reasonable numeric value (20.0 cm to 250.0 cm).
+    - Defaults measurement_date to today's date if missing.
+    - Persists permanently to SQLite database without fabricating synthetic data.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    if req.height_cm <= 20.0 or req.height_cm >= 250.0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please enter a valid height measurement between 20.0 cm and 250.0 cm."
+        )
+
+    # Validate measurement date format (YYYY-MM-DD)
+    meas_date = req.measurement_date.strip() if req.measurement_date else None
+    if not meas_date:
+        meas_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    else:
+        try:
+            datetime.strptime(meas_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Measurement date must follow YYYY-MM-DD format."
+            )
+
+    now_str = datetime.now(timezone.utc).isoformat()
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM children WHERE id = ? AND parent_id = ?", (child_id, parent_id))
+        child_row = cursor.fetchone()
+        if not child_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Child profile not found or does not belong to the authenticated caregiver."
+            )
+
+        cursor.execute("""
+            INSERT INTO child_height_measurements (
+                child_id, parent_id, height_cm, measurement_date, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            child_id,
+            parent_id,
+            round(req.height_cm, 2),
+            meas_date,
+            (req.notes or "").strip(),
+            now_str,
+            now_str
+        ))
+        new_id = cursor.lastrowid
+
+        # Update child updated_at
+        cursor.execute("UPDATE children SET updated_at = ? WHERE id = ?", (now_str, child_id))
+        conn.commit()
+
+        # Find preceding measurement to calculate diff
+        cursor.execute("""
+            SELECT height_cm FROM child_height_measurements
+            WHERE child_id = ? AND parent_id = ? AND id != ? AND measurement_date <= ?
+            ORDER BY measurement_date DESC, id DESC
+            LIMIT 1
+        """, (child_id, parent_id, new_id, meas_date))
+        prev_row = cursor.fetchone()
+        diff = None
+        if prev_row:
+            diff = round(req.height_cm - prev_row["height_cm"], 2)
+
+        return HeightMeasurementResponse(
+            id=new_id,
+            child_id=child_id,
+            parent_id=parent_id,
+            height_cm=round(req.height_cm, 2),
+            measurement_date=meas_date,
+            notes=(req.notes or "").strip(),
+            created_at=now_str,
+            updated_at=now_str,
+            diff_from_previous=diff
+        )
+
+
+@router.put("/children/{child_id}/heights/{measurement_id}", response_model=HeightMeasurementResponse)
+@router.patch("/children/{child_id}/heights/{measurement_id}", response_model=HeightMeasurementResponse)
+@children_router.put("/{child_id}/heights/{measurement_id}", response_model=HeightMeasurementResponse)
+@children_router.patch("/{child_id}/heights/{measurement_id}", response_model=HeightMeasurementResponse)
+def update_child_height_measurement(
+    child_id: int,
+    measurement_id: int,
+    req: HeightMeasurementUpdate,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Updates an existing height measurement record.
+    - Strictly authorized to the owning parent.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, child_id, parent_id, height_cm, measurement_date, notes, created_at, updated_at
+            FROM child_height_measurements
+            WHERE id = ? AND child_id = ? AND parent_id = ?
+        """, (measurement_id, child_id, parent_id))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Measurement record not found or unauthorized."
+            )
+
+        updates = []
+        params = []
+
+        if req.height_cm is not None:
+            if req.height_cm <= 20.0 or req.height_cm >= 250.0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Please enter a valid height measurement between 20.0 cm and 250.0 cm."
+                )
+            updates.append("height_cm = ?")
+            params.append(round(req.height_cm, 2))
+
+        if req.measurement_date is not None and req.measurement_date.strip():
+            meas_date = req.measurement_date.strip()
+            try:
+                datetime.strptime(meas_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Measurement date must follow YYYY-MM-DD format."
+                )
+            updates.append("measurement_date = ?")
+            params.append(meas_date)
+
+        if req.notes is not None:
+            updates.append("notes = ?")
+            params.append(req.notes.strip())
+
+        now_str = datetime.now(timezone.utc).isoformat()
+        updates.append("updated_at = ?")
+        params.append(now_str)
+
+        if updates:
+            params.extend([measurement_id, child_id, parent_id])
+            cursor.execute(f"""
+                UPDATE child_height_measurements
+                SET {', '.join(updates)}
+                WHERE id = ? AND child_id = ? AND parent_id = ?
+            """, tuple(params))
+            conn.commit()
+
+        cursor.execute("""
+            SELECT id, child_id, parent_id, height_cm, measurement_date, notes, created_at, updated_at
+            FROM child_height_measurements
+            WHERE id = ?
+        """, (measurement_id,))
+        updated_row = cursor.fetchone()
+
+        # Preceding diff
+        cursor.execute("""
+            SELECT height_cm FROM child_height_measurements
+            WHERE child_id = ? AND parent_id = ? AND id != ? AND measurement_date <= ?
+            ORDER BY measurement_date DESC, id DESC
+            LIMIT 1
+        """, (child_id, parent_id, measurement_id, updated_row["measurement_date"]))
+        prev_row = cursor.fetchone()
+        diff = None
+        if prev_row:
+            diff = round(updated_row["height_cm"] - prev_row["height_cm"], 2)
+
+        return HeightMeasurementResponse(
+            id=updated_row["id"],
+            child_id=updated_row["child_id"],
+            parent_id=updated_row["parent_id"],
+            height_cm=round(updated_row["height_cm"], 2),
+            measurement_date=updated_row["measurement_date"],
+            notes=updated_row["notes"] or "",
+            created_at=updated_row["created_at"],
+            updated_at=updated_row["updated_at"],
+            diff_from_previous=diff
+        )
+
+
+@router.delete("/children/{child_id}/heights/{measurement_id}", response_model=GenericMessageResponse)
+@children_router.delete("/{child_id}/heights/{measurement_id}", response_model=GenericMessageResponse)
+def delete_child_height_measurement(
+    child_id: int,
+    measurement_id: int,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Deletes an existing height measurement record.
+    - Strictly authorized to the owning parent.
+    """
+    parent_id = get_authenticated_user_id(authorization)
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id FROM child_height_measurements
+            WHERE id = ? AND child_id = ? AND parent_id = ?
+        """, (measurement_id, child_id, parent_id))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Measurement record not found or unauthorized."
+            )
+
+        cursor.execute("""
+            DELETE FROM child_height_measurements
+            WHERE id = ? AND child_id = ? AND parent_id = ?
+        """, (measurement_id, child_id, parent_id))
+        conn.commit()
+
+        return GenericMessageResponse(
+            success=True,
+            message="Height measurement deleted successfully."
         )

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -16,20 +15,6 @@ class SocialAuthService {
   static const String _googleServerClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
     defaultValue: '',
-  );
-
-  /// Apple Service ID for web/Android sign-in flow
-  /// Can be overridden at build time via:
-  /// --dart-define=APPLE_SERVICE_ID=...
-  static const String _appleServiceId = String.fromEnvironment(
-    'APPLE_SERVICE_ID',
-    defaultValue: 'com.poshansaathi.service',
-  );
-
-  /// Apple OAuth redirect URI for web/Android sign-in
-  static const String _appleRedirectUri = String.fromEnvironment(
-    'APPLE_REDIRECT_URI',
-    defaultValue: 'https://poshan-saathi-1.onrender.com/api/auth/apple/callback',
   );
 
   late final GoogleSignIn _googleSignIn = GoogleSignIn(

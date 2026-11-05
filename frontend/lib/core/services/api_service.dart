@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../models/child_model.dart';
+import '../models/height_measurement_model.dart';
+import '../models/chat_model.dart';
 import 'user_session.dart';
 
 class AuthResult {
@@ -648,72 +650,6 @@ class ApiService {
     }
   }
 
-  /// Authenticates using a verified Apple Identity Token
-  Future<AuthResult> loginWithApple({
-    required String identityToken,
-    String? authorizationCode,
-    String? firstName,
-    String? lastName,
-    String? email,
-    String role = 'parent',
-    String? language,
-    String? state,
-    String? district,
-  }) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
-
-    try {
-      final baseUrl = await _getBaseUrl();
-      final uri = Uri.parse('$baseUrl/api/auth/apple');
-
-      final request = await client.postUrl(uri);
-      request.headers.contentType = ContentType.json;
-
-      final payload = jsonEncode({
-        'identity_token': identityToken.trim(),
-        if (authorizationCode != null) 'authorization_code': authorizationCode.trim(),
-        if (firstName != null && firstName.isNotEmpty) 'first_name': firstName.trim(),
-        if (lastName != null && lastName.isNotEmpty) 'last_name': lastName.trim(),
-        if (email != null && email.isNotEmpty) 'email': email.trim().toLowerCase(),
-        'role': role,
-        if (language != null) 'language': language,
-        if (state != null) 'state': state,
-        if (district != null) 'district': district,
-      });
-
-      request.write(payload);
-      final response = await request.close().timeout(const Duration(seconds: 45));
-      final responseBody = await response.transform(utf8.decoder).join();
-      final data = jsonDecode(responseBody) as Map<String, dynamic>;
-
-      if (response.statusCode == 200) {
-        final userData = data['user'] as Map<String, dynamic>;
-        final token = data['token'] as String?;
-        final user = UserModel.fromJson(userData, token: token);
-
-        await UserSession.instance.setUser(user);
-
-        return AuthResult(
-          success: true,
-          message: data['message'] as String? ?? 'Signed in with Apple successfully!',
-          user: user,
-          token: token,
-        );
-      } else {
-        final errorMsg = data['detail'] as String? ?? 'Apple authentication failed.';
-        return AuthResult(success: false, message: errorMsg);
-      }
-    } catch (e) {
-      debugPrint('ℹ️ Network error during Apple sign-in: $e');
-      return AuthResult(
-        success: false,
-        message: _classifyNetworkError(e),
-      );
-    } finally {
-      client.close(force: true);
-    }
-  }
-
   /// Updates authenticated user profile details via PUT /api/auth/profile
   Future<AuthResult> updateProfile({
     String? name,
@@ -1015,5 +951,558 @@ class ApiService {
       client.close(force: true);
     }
     return [];
+  }
+
+  /// Updates child details (such as weight, dob, name) via PATCH /api/children/{childId}
+  Future<ChildModel?> updateChild({
+    required int childId,
+    String? name,
+    String? dob,
+    double? weight,
+    String? gender,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId');
+
+      final request = await client.patchUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        if (name != null) 'name': name.trim(),
+        if (dob != null) 'dob': dob.trim(),
+        if (weight != null) 'weight': weight,
+        if (gender != null) 'gender': gender.trim(),
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return ChildModel.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not update child in backend: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+  /// Adds a single child profile for the authenticated parent via POST /api/children
+  Future<ChildModel?> addChild({
+    required String name,
+    required String dob,
+    required String gender,
+    double? weight,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        'name': name.trim(),
+        'dob': dob.trim(),
+        'gender': gender.trim(),
+        if (weight != null) 'weight': weight,
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return ChildModel.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not add child in backend: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+
+  /// Fetches actual recorded height measurements for a child
+  Future<List<HeightMeasurementModel>> fetchHeightMeasurements(int childId) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return [];
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId/heights');
+
+      final request = await client.getUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 25));
+      if (response.statusCode == 200) {
+        final responseBody = await response.transform(utf8.decoder).join();
+        final list = jsonDecode(responseBody) as List<dynamic>;
+        return list.map((item) => HeightMeasurementModel.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not fetch height measurements: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return [];
+  }
+
+  /// Records a new height measurement in centimetres (cm)
+  Future<HeightMeasurementModel?> addHeightMeasurement({
+    required int childId,
+    required double heightCm,
+    String? measurementDate,
+    String? notes,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId/heights');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        'height_cm': heightCm,
+        if (measurementDate != null && measurementDate.isNotEmpty)
+          'measurement_date': measurementDate,
+        if (notes != null) 'notes': notes.trim(),
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return HeightMeasurementModel.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not add height measurement: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+  /// Updates an existing height measurement record
+  Future<HeightMeasurementModel?> updateHeightMeasurement({
+    required int childId,
+    required int measurementId,
+    double? heightCm,
+    String? measurementDate,
+    String? notes,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId/heights/$measurementId');
+
+      final request = await client.putUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        if (heightCm != null) 'height_cm': heightCm,
+        if (measurementDate != null && measurementDate.isNotEmpty)
+          'measurement_date': measurementDate,
+        if (notes != null) 'notes': notes.trim(),
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return HeightMeasurementModel.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not update height measurement: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+  /// Deletes an existing height measurement record
+  Future<bool> deleteHeightMeasurement({
+    required int childId,
+    required int measurementId,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return false;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/children/$childId/heights/$measurementId');
+
+      final request = await client.deleteUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('ℹ️ Could not delete height measurement: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return false;
+  }
+
+  // ===========================================================================
+  // AI CHATBOT METHODS
+  // ===========================================================================
+
+  /// Streams message tokens in real-time via Server-Sent Events (SSE).
+  Stream<ChatStreamEvent> streamChatMessage({
+    required String message,
+    int? conversationId,
+    int? childId,
+  }) async* {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) {
+      yield const ChatStreamEvent(
+        type: 'error',
+        error: 'Please log in to chat with PoshanSaathi AI.',
+      );
+      return;
+    }
+
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      yield const ChatStreamEvent(
+        type: 'error',
+        error: 'Message cannot be empty.',
+      );
+      return;
+    }
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/stream');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+      request.headers.set('Accept', 'text/event-stream');
+
+      final body = <String, dynamic>{
+        'message': trimmed,
+        if (conversationId != null) 'conversation_id': conversationId,
+        if (childId != null) 'child_id': childId,
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 40));
+
+      if (response.statusCode != 200) {
+        final errBody = await response.transform(utf8.decoder).join();
+        String errorMsg = 'Failed to connect to AI (Error ${response.statusCode})';
+        try {
+          final errMap = jsonDecode(errBody);
+          if (errMap is Map && errMap['detail'] != null) {
+            errorMsg = errMap['detail'].toString();
+          }
+        } catch (_) {}
+        yield ChatStreamEvent(type: 'error', error: errorMsg);
+        return;
+      }
+
+      await for (final line in response.transform(utf8.decoder).transform(const LineSplitter())) {
+        final trimmedLine = line.trim();
+        if (trimmedLine.isEmpty || trimmedLine.startsWith(':')) continue;
+
+        if (trimmedLine.startsWith('data: ')) {
+          final jsonStr = trimmedLine.substring(6).trim();
+          try {
+            final map = jsonDecode(jsonStr);
+            if (map is Map<String, dynamic>) {
+              final type = map['type']?.toString() ?? 'token';
+              if (type == 'token') {
+                yield ChatStreamEvent(
+                  type: 'token',
+                  delta: map['delta']?.toString() ?? '',
+                );
+              } else if (type == 'done') {
+                yield ChatStreamEvent(
+                  type: 'done',
+                  reply: map['reply']?.toString(),
+                  conversationId: map['conversation_id'] is int
+                      ? map['conversation_id'] as int
+                      : int.tryParse(map['conversation_id']?.toString() ?? ''),
+                  messageId: map['message_id'] is int
+                      ? map['message_id'] as int
+                      : int.tryParse(map['message_id']?.toString() ?? ''),
+                  childId: map['child_id'] is int
+                      ? map['child_id'] as int
+                      : int.tryParse(map['child_id']?.toString() ?? ''),
+                  childName: map['child_name']?.toString(),
+                );
+              } else if (type == 'error') {
+                yield ChatStreamEvent(
+                  type: 'error',
+                  error: map['error']?.toString() ?? 'An error occurred during streaming.',
+                );
+              }
+            }
+          } catch (e) {
+            debugPrint('ℹ️ SSE JSON parse error: $e');
+          }
+        }
+      }
+    } on TimeoutException {
+      yield const ChatStreamEvent(
+        type: 'error',
+        error: 'The AI service took too long to reply. Please check your internet connection and tap retry.',
+      );
+    } catch (e) {
+      debugPrint('ℹ️ Streaming connection error: $e');
+      yield const ChatStreamEvent(
+        type: 'error',
+        error: 'Connection interrupted while streaming response. Please tap retry.',
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Sends a message to the AI Chatbot and returns the assistant's reply.
+  Future<ChatSendResult> sendChatMessage({
+    required String message,
+    int? conversationId,
+    int? childId,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) {
+      return const ChatSendResult(
+        success: false,
+        errorMessage: 'Please log in to chat with PoshanSaathi AI.',
+      );
+    }
+
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      return const ChatSendResult(
+        success: false,
+        errorMessage: 'Message cannot be empty.',
+      );
+    }
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/send');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        'message': trimmed,
+        if (conversationId != null) 'conversation_id': conversationId,
+        if (childId != null) 'child_id': childId,
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 45));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return ChatSendResult(
+          success: true,
+          conversationId: data['conversation_id'] is int
+              ? data['conversation_id'] as int
+              : int.tryParse(data['conversation_id']?.toString() ?? ''),
+          messageId: data['message_id'] is int
+              ? data['message_id'] as int
+              : int.tryParse(data['message_id']?.toString() ?? ''),
+          reply: data['reply']?.toString() ?? '',
+          childId: data['child_id'] is int
+              ? data['child_id'] as int
+              : int.tryParse(data['child_id']?.toString() ?? ''),
+          childName: data['child_name']?.toString(),
+        );
+      } else {
+        String msg = 'Failed to get AI response (${response.statusCode})';
+        try {
+          final errJson = jsonDecode(responseBody);
+          if (errJson is Map && errJson.containsKey('detail')) {
+            msg = errJson['detail'].toString();
+          }
+        } catch (_) {}
+        return ChatSendResult(success: false, errorMessage: msg);
+      }
+    } on TimeoutException {
+      return const ChatSendResult(
+        success: false,
+        errorMessage: 'The AI service took too long to reply. Please check your connection and tap retry.',
+      );
+    } catch (e) {
+      debugPrint('ℹ️ AI chat error: $e');
+      return ChatSendResult(
+        success: false,
+        errorMessage: 'Unable to connect to nutrition assistant. Please try again.',
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// Fetches all chat conversation sessions for the current authenticated caregiver.
+  Future<List<ChatConversationSummary>> fetchChatHistory() async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return const [];
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/history');
+
+      final request = await client.getUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody);
+        if (data is List) {
+          return data
+              .whereType<Map<String, dynamic>>()
+              .map((j) => ChatConversationSummary.fromJson(j))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not fetch chat history: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return const [];
+  }
+
+  /// Fetches all messages within a specific conversation.
+  Future<List<ChatMessage>> fetchChatMessages(int conversationId) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return const [];
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/history/$conversationId');
+
+      final request = await client.getUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        final rawMessages = data['messages'];
+        if (rawMessages is List) {
+          return rawMessages
+              .whereType<Map<String, dynamic>>()
+              .map((j) => ChatMessage.fromJson(j))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not fetch conversation messages: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return const [];
+  }
+
+  /// Creates a new chat conversation session.
+  Future<ChatConversationSummary?> newChatConversation({
+    int? childId,
+    String? title,
+  }) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return null;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/new');
+
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final body = <String, dynamic>{
+        if (childId != null) 'child_id': childId,
+        if (title != null && title.isNotEmpty) 'title': title,
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(responseBody) as Map<String, dynamic>;
+        return ChatConversationSummary.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not create new chat conversation: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return null;
+  }
+
+  /// Deletes a chat conversation and all of its messages.
+  Future<bool> deleteChatConversation(int conversationId) async {
+    final token = UserSession.instance.currentToken;
+    if (token == null || token.isEmpty) return false;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
+    try {
+      final baseUrl = await _getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/chat/history/$conversationId');
+
+      final request = await client.deleteUrl(uri);
+      request.headers.set('Authorization', 'Bearer $token');
+
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('ℹ️ Could not delete chat conversation: $e');
+    } finally {
+      client.close(force: true);
+    }
+    return false;
   }
 }

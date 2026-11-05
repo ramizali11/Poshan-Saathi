@@ -150,7 +150,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         """)
 
-        # Create oauth_accounts table for social login (Google, Apple)
+        # Create oauth_accounts table for social login (Google)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS oauth_accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -269,6 +269,61 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_children_parent_id ON children(parent_id);
         """)
         
+        # Create child_height_measurements table for tracking child growth history in cm
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS child_height_measurements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                child_id INTEGER NOT NULL,
+                parent_id INTEGER NOT NULL,
+                height_cm REAL NOT NULL,
+                measurement_date TEXT NOT NULL,
+                notes TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_height_child_date ON child_height_measurements(child_id, measurement_date);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_height_parent_id ON child_height_measurements(parent_id);
+        """)
+
+
+        # Create chat_conversations table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                child_id INTEGER,
+                title TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE SET NULL
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_conv_user_id ON chat_conversations(user_id);
+        """)
+
+        # Create chat_messages table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                sender_role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_msg_conv_id ON chat_messages(conversation_id);
+        """)
+
         conn.commit()
         print(f"[DB] SQLite database initialized at: {DB_PATH}")
 

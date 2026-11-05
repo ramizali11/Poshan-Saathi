@@ -410,7 +410,7 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Social Sign-Up: Google & Apple
+              // Social Sign-Up: Google
               SocialAuthButtons(
                 isRegistration: true,
                 role: 'parent',

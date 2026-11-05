@@ -5,7 +5,12 @@ import 'package:frontend/core/theme/app_typography.dart';
 import 'package:frontend/core/constants/app_images_data.dart';
 
 class AiAssistantScreen extends StatefulWidget {
-  const AiAssistantScreen({super.key});
+  final int? initialConversationId;
+
+  const AiAssistantScreen({
+    super.key,
+    this.initialConversationId,
+  });
 
   @override
   State<AiAssistantScreen> createState() => _AiAssistantScreenState();
@@ -14,6 +19,12 @@ class AiAssistantScreen extends StatefulWidget {
 class _AiAssistantScreenState extends State<AiAssistantScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
+
+  int? _activeConversationId;
+  String _conversationTitle = 'Nutrition Advice';
+  bool _isLoadingHistory = false;
+  bool _isTyping = false;
   bool _isRecording = false;
   bool _isGujaratiMode = true;
   String? _currentlyPlayingId;
@@ -537,7 +548,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> with SingleTicker
                             ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
                     const SizedBox(height: 5),
                     Text(
